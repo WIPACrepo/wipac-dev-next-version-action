@@ -67,7 +67,7 @@ runs:
 
         # handle output
         if [ -z "$VERSION" ]; then
-            echo "No release needed"
+            echo "No version bump needed"
             echo "version=" >> "$GITHUB_OUTPUT"
         else
             echo "Next version: $VERSION"

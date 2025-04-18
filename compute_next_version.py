@@ -42,11 +42,11 @@ def main(
     logging.info(f"{ignore_patterns=}")
     logging.info(f"{force_patch=}")
 
-    # is a release needed?
+    # is a version bump needed?
     if not changed_files:
         return logging.info("No changes detected")
     if are_all_files_ignored(changed_files, ignore_patterns):
-        return logging.info("None of the changed files require a release.")
+        return logging.info("None of the changed files require a version bump.")
 
     # detect bump
     if "[major]" in commit_log:
