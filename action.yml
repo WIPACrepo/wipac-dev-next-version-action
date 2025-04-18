@@ -47,14 +47,14 @@ runs:
         echo "Looking at what's changed since $_latest_semver_tag / $_that_commit..."
         echo
         #
-        export CHANGED_FILES=$(git diff --name-only "$_that_commit"..HEAD)
+        export CHANGED_FILES=$(git diff --name-only "$_that_commit"..HEAD)  # has newlines
         echo "Changed files:"
         echo "<start>"
         echo "$CHANGED_FILES"
         echo "<end>"
         echo
         #
-        export COMMIT_LOG=$(git log "$_that_commit"..HEAD --pretty=%B)
+        export COMMIT_LOG=$(git log "$_that_commit"..HEAD --pretty=%B)  # has newlines
         echo "Commit log(s) since then:"
         echo "<start>"
         echo "$COMMIT_LOG"
