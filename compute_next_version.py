@@ -15,12 +15,13 @@ class BumpType(enum.StrEnum):
 def are_all_files_ignored(changed_files: list[str], ignore_patterns: list[str]) -> bool:
     """Do all the changed files match the ignore_patterns?"""
     for f in changed_files:
+        logging.debug(f"Checking if this changed file is ignored: {f}")
         for pat in ignore_patterns:
             if fnmatch.fnmatch(f, pat):
-                logging.debug(f"File is  ignored: {f} (by pattern: {pat})")
+                logging.debug(f"-> COVERED BY IGNORE-PATTERN: {pat}")
                 break
             else:
-                logging.debug(f"File not ignored: {f} (by pattern: {pat})")
+                logging.debug(f"-> not covered by pattern: {pat}")
         else:  # <- if no 'break'
             logging.info(f"Found a changed non-ignored file: {f}")
             return False
