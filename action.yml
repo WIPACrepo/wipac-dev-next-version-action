@@ -62,7 +62,7 @@ runs:
         echo
 
         # get next version
-        VERSION=$(python compute_next_version.py)
+        VERSION=$(python ${{ github.action_path }}/compute_next_version.py)
         echo
 
         # handle output
