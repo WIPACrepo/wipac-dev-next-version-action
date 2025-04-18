@@ -50,6 +50,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # required to see tags and commits
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
 
       - uses: WIPACrepo/wipac-dev-next-version-action@v#.#
         id: next-version
