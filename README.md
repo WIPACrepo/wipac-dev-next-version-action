@@ -11,8 +11,6 @@ This GHA package determines the next semantic version (`MAJOR.MINOR.PATCH`) base
 
 This action is designed for CI/CD workflows that automatically publish new releases only when needed.
 
----
-
 ## How it Works
 
 1. Finds the most recent tag matching `vX.Y.Z` or `X.Y.Z`
@@ -24,8 +22,7 @@ This action is designed for CI/CD workflows that automatically publish new relea
     - `[patch]` or `[fix]`
 5. Computes the next version accordingly
 6. Outputs the bumped version, or an empty string if no release is needed
-
----
+    - The version number does not have a v-prefix (e.g. `1.2.5`)
 
 ## Inputs
 
@@ -34,15 +31,11 @@ This action is designed for CI/CD workflows that automatically publish new relea
 | `force-patch-if-no-commit-token` | `false`  | `"false"` | If true, bumps a patch version even if no commit message contains a bump token                               |
 | `ignore-paths`                   | `false`  | `""`      | Newline-delimited glob patterns (e.g. `resources/**`) — if all changed files match these, no release is made |
 
----
-
 ## Outputs
 
 | Name      | Description                                                                               |
 |-----------|-------------------------------------------------------------------------------------------|
 | `version` | The computed semantic version (e.g. `1.2.3`), or empty string if no new version is needed |
-
----
 
 ## Example Usage
 
