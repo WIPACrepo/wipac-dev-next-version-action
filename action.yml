@@ -1,0 +1,69 @@
+name: Compute Bumped Version
+description: >
+  Computes the next semantic version based on commit messages and changed files since the last version tag.
+
+inputs:
+  force-patch-if-no-commit-token:
+    description: Force patch bump if no [major], [minor], [patch], or [fix] found in commit message(s)
+    required: false
+    default: "false"
+  ignore-paths:
+    description: Newline-delimited list of file/directory globs to ignore when checking changed files
+    required: false
+    default: ""
+
+outputs:
+  version:
+    description: The next semantic version (empty string if no bump is needed)
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      env:
+        FORCE_PATCH_IF_NO_COMMIT_TOKEN: ${{ inputs.force-patch-if-no-commit-token }}
+        IGNORE_PATHS: ${{ inputs.ignore-paths }}
+      run: |
+        set -euo pipefail
+        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        echo
+
+        _latest_semver_tag=$(git tag --sort=-creatordate | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+        echo "Latest semantic-version style tag: $_latest_semver_tag"
+        echo
+        if [ -z "$_latest_semver_tag" ]; then
+            echo "No previous semver tag found — using 0.0.0"
+            echo "version=0.0.0" >> "$GITHUB_OUTPUT"
+            exit 0
+        else
+            export LATEST_SEMVER_TAG_NO_V="${_latest_semver_tag#v}"
+        fi
+
+        _that_commit=$(git rev-list -n 1 "$_latest_semver_tag")
+        echo "Looking at what's changed since $_latest_semver_tag / $_that_commit..."
+        echo
+
+        export CHANGED_FILES=$(git diff --name-only "$_that_commit"..HEAD)
+        echo "Changed files:"
+        echo "<start>"
+        echo "$CHANGED_FILES"
+        echo "<end>"
+        echo
+
+        export COMMIT_LOG=$(git log "$_that_commit"..HEAD --pretty=%B)
+        echo "Commit log(s) since then:"
+        echo "<start>"
+        echo "$COMMIT_LOG"
+        echo "<end>"
+        echo
+
+        VERSION=$(python compute_next_version.py)
+        echo
+
+        if [ -z "$VERSION" ]; then
+            echo "No release needed"
+            echo "version=" >> "$GITHUB_OUTPUT"
+        else
+            echo "Next version: $VERSION"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        fi
