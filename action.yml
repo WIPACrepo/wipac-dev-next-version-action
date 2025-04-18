@@ -15,11 +15,13 @@ inputs:
 outputs:
   version:
     description: The next semantic version (empty string if no bump is needed)
+    value: ${{ steps.compute.outputs.version }}
 
 runs:
   using: "composite"
   steps:
-    - shell: bash
+    - id: compute
+      shell: bash
       env:
         FORCE_PATCH_IF_NO_COMMIT_TOKEN: ${{ inputs.force-patch-if-no-commit-token }}
         IGNORE_PATHS: ${{ inputs.ignore-paths }}
