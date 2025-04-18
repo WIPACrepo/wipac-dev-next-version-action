@@ -51,6 +51,8 @@ jobs:
         with:
           fetch-depth: 0  # required to see tags and commits
 
+      ...
+
       - uses: WIPACrepo/wipac-dev-next-version-action@v#.#
         id: next-version
         ...
