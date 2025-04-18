@@ -30,6 +30,7 @@ runs:
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
         echo
 
+        # get the latest semantic-version style tag
         _latest_semver_tag=$(git tag --sort=-creatordate | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
         echo "Latest semantic-version style tag: $_latest_semver_tag"
         echo
@@ -41,17 +42,18 @@ runs:
             export LATEST_SEMVER_TAG_NO_V="${_latest_semver_tag#v}"
         fi
 
+        # get info on what's changed since that tag
         _that_commit=$(git rev-list -n 1 "$_latest_semver_tag")
         echo "Looking at what's changed since $_latest_semver_tag / $_that_commit..."
         echo
-
+        #
         export CHANGED_FILES=$(git diff --name-only "$_that_commit"..HEAD)
         echo "Changed files:"
         echo "<start>"
         echo "$CHANGED_FILES"
         echo "<end>"
         echo
-
+        #
         export COMMIT_LOG=$(git log "$_that_commit"..HEAD --pretty=%B)
         echo "Commit log(s) since then:"
         echo "<start>"
@@ -59,9 +61,11 @@ runs:
         echo "<end>"
         echo
 
+        # get next version
         VERSION=$(python compute_next_version.py)
         echo
 
+        # handle output
         if [ -z "$VERSION" ]; then
             echo "No release needed"
             echo "version=" >> "$GITHUB_OUTPUT"
