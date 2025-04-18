@@ -5,11 +5,18 @@ import fnmatch
 import logging
 import os
 
+# **************************************************************************************
+# NOTE!
+#
+# THIS MUST BE COMPATIBLE WITH THE LOWEST SUPPORTED PYTHON VERSION
+# -> FANCINESS WILL HAVE TO WAIT
+# **************************************************************************************
 
-class BumpType(enum.StrEnum):
-    MAJOR = enum.auto()
-    MINOR = enum.auto()
-    PATCH = enum.auto()
+
+class BumpType(enum.Enum):
+    MAJOR = "MAJOR"
+    MINOR = "MINOR"
+    PATCH = "PATCH"
 
 
 def are_all_files_ignored(changed_files: list[str], ignore_patterns: list[str]) -> bool:
@@ -60,17 +67,17 @@ def main(
 
     # increment
     major, minor, patch = map(int, tag.split("."))
-    match bump:
-        case BumpType.MAJOR:
-            major += 1
-            minor = patch = 0
-        case BumpType.MINOR:
-            minor += 1
-            patch = 0
-        case BumpType.PATCH:
-            patch += 1
-        case _:
-            raise ValueError(f"Bump type not supported: {bump}")
+    if bump == BumpType.MAJOR:
+        major += 1
+        minor = 0
+        patch = 0
+    elif bump == BumpType.MINOR:
+        minor += 1
+        patch = 0
+    elif bump == BumpType.PATCH:
+        patch += 1
+    else:
+        raise ValueError(f"Bump type not supported: {bump}")
 
     # print the next version
     print(f"{major}.{minor}.{patch}")
