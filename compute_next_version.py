@@ -21,7 +21,7 @@ def are_all_files_ignored(changed_files: list[str], ignore_patterns: list[str]) 
                 logging.debug(f"-> COVERED BY IGNORE-PATTERN: {pat}")
                 break
             else:
-                logging.debug(f"-> not covered by pattern: {pat}")
+                logging.debug(f"-> nope: {pat}")
         else:  # <- if no 'break'
             logging.info(f"Found a changed non-ignored file: {f}")
             return False
