@@ -40,21 +40,29 @@ This action is designed for CI/CD workflows that automatically publish new relea
 ## Example Usage
 
 ```yaml
-...
-
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0  # required to see tags and commits
-
-- uses: WIPACrepo/wipac-dev-next-version-action@v#.#
-  id: next-version
-  with:
-    force-patch-if-no-commit-token: true
-    ignore-paths: |
-      resources/**
-      assets/**
-      .github/**
-
-- if: steps.next-version.outputs.version != ''
+jobs:
   ...
+
+  release:
+    runs-on: ubuntu-latest
+    concurrency: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # required to see tags and commits
+
+      - uses: WIPACrepo/wipac-dev-next-version-action@v#.#
+        id: next-version
+        ...
+
+      - if: steps.next-version.outputs.version != ''
+        uses: WIPACrepo/wipac-dev-py-build-action@v#.#
+        with:
+          version: ${{ steps.next-version.outputs.version }}
+
+      ...
 ```
+
+## Also See
+
+- [`WIPACrepo/wipac-dev-py-build-action`](https://github.com/WIPACrepo/wipac-dev-py-build-action)
