@@ -20,11 +20,23 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - id: compute
+    - name: Is this most recent commit?
       shell: bash
+      run: |
+        set -euo pipefail
+        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+
+        git fetch &> /dev/null
+        if [[ $(git status -sb | grep behind) ]]; then
+          echo "::error::this commit is not most recent on this branch -- rest of workflow should be halted"
+          exit 1
+        fi
+
+    - id: compute
       env:
         FORCE_PATCH_IF_NO_COMMIT_TOKEN: ${{ inputs.force-patch-if-no-commit-token }}
         IGNORE_PATHS: ${{ inputs.ignore-paths }}
+      shell: bash
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
