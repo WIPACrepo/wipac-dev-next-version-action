@@ -76,8 +76,15 @@ runs:
         # get next version
         VERSION=$(python ${{ github.action_path }}/compute_next_version.py)
         echo
+        
+        # last minute check that branch has not been updated
+        git fetch &> /dev/null
+        if [[ $(git status -sb | grep behind) ]]; then
+          echo "this commit is not most recent on this branch -- rest of action will be aborted"
+          exit 0
+        fi
 
-        # handle output
+        # supply output
         if [ -z "$VERSION" ]; then
             echo "No version bump needed"
             echo "version=" >> "$GITHUB_OUTPUT"
