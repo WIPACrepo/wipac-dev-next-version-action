@@ -39,32 +39,35 @@ This action is designed for CI/CD workflows that automatically publish new relea
 
 ## Example Usage
 
+The following is based on `WIPACrepo/wipac-dev-actions-testbed`'s [`ci.yml`](https://github.com/WIPACrepo/wipac-dev-actions-testbed/blob/main/.github/workflows/ci.yml):
+
 ```yaml
 jobs:
   ...
 
-  release:
-    runs-on: ubuntu-latest
-    concurrency: release
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # required to see tags and commits
+  tag-new-version:
+  # only run on main/master/default
+  if: format('refs/heads/{0}', github.event.repository.default_branch) == github.ref
+  needs: [ ... ]
+  runs-on: ubuntu-latest
+  concurrency: tag-new-version  # prevent any possible race conditions
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # required to see tags and commits
+        ref: ${{ github.sha }}  # in case 'ref' (arg default) has been updated since start
+        token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}  # so a 'git push' can trigger workflows
 
-      ...
+    - uses: WIPACrepo/wipac-dev-next-version-action@main
+      id: next-version
+      with:
+        force-patch-if-no-commit-token: ...
+        ignore-paths: |
+          ...
 
-      - uses: WIPACrepo/wipac-dev-next-version-action@v#.#
-        id: next-version
-        ...
-
-      - if: steps.next-version.outputs.version != ''
-        uses: WIPACrepo/wipac-dev-py-build-action@v#.#
-        with:
-          version: ${{ steps.next-version.outputs.version }}
-
-      ...
+    - name: Tag New Version
+      if: steps.next-version.outputs.version != ''
+      run: |
+        git tag v${{ steps.next-version.outputs.version }}  # note: prepend 'v'
+        git push origin --tags
 ```
-
-## Also See
-
-- [`WIPACrepo/wipac-dev-py-build-action`](https://github.com/WIPACrepo/wipac-dev-py-build-action)
