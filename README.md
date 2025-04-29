@@ -53,7 +53,7 @@ jobs:
     ...
   ]
   runs-on: ubuntu-latest
-  concurrency: release  # prevent any possible race conditions
+  concurrency: tag-and-release  # prevent any possible race conditions
   steps:
     - uses: actions/checkout@v4
       with:
@@ -62,7 +62,7 @@ jobs:
 
     ...
 
-    - uses: WIPACrepo/wipac-dev-next-version-action@v1.1
+    - uses: WIPACrepo/wipac-dev-next-version-action@...
       id: next-version
       with:
         force-patch-if-no-commit-token: ...
