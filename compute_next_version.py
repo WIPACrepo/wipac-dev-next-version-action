@@ -26,7 +26,7 @@ BUMP_TOKENS = {
     BumpType.MAJOR: ["[major]"],
     BumpType.MINOR: ["[minor]"],
     BumpType.PATCH: ["[patch]", "[fix]"],
-    BumpType.NO_BUMP: ["[no-bump]", "[no_bump]"],
+    BumpType.NO_BUMP: ["[no-bump]", "[no_bump]", "[nobump]"],
 }
 
 
