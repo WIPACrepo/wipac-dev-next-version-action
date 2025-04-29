@@ -25,7 +25,7 @@ runs:
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
-        
+
         git fetch --tags &> /dev/null
         if git status -sb | grep behind; then
           echo "::warning::This commit is not the most recent on this branch — rest of workflow should be halted."
@@ -38,7 +38,7 @@ runs:
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
-        
+
         _latest_semver_tag=$(git tag --sort=-creatordate | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
         echo "Latest semantic-version style tag: $_latest_semver_tag"
         echo "LATEST_SEMVER_TAG=$_latest_semver_tag" >> "$GITHUB_ENV"
@@ -48,14 +48,13 @@ runs:
 
     - name: Handle no previous tag (first release case)
       if: env.IS_DONE != 'true' && env.LATEST_SEMVER_TAG == ''
-      id: output-version
       shell: bash
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         echo "No previous semver tag found — using 0.0.0."
-        echo "version=0.0.0" >> "$GITHUB_OUTPUT"
+        echo "VERSION=0.0.0" >> "$GITHUB_ENV"
         echo "IS_DONE=true" >> "$GITHUB_ENV"
 
     - name: Validate latest tag commit ancestry
@@ -64,7 +63,7 @@ runs:
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
-        
+
         _latest_tag_sha=$(git rev-parse "$LATEST_SEMVER_TAG")
         echo "Latest tag SHA: $_latest_tag_sha"
         echo "LATEST_TAG_SHA=$_latest_tag_sha" >> "$GITHUB_ENV"
@@ -72,7 +71,7 @@ runs:
         # Case 1: does this tag already point to $GITHUB_SHA?
         if [[ "$_latest_tag_sha" == "$GITHUB_SHA" ]]; then
           echo "::warning::This commit ($GITHUB_SHA) is already tagged ($LATEST_SEMVER_TAG) — no bump needed."
-          echo "version=" >> "$GITHUB_OUTPUT"
+          echo "VERSION=" >> "$GITHUB_ENV"
           echo "IS_DONE=true" >> "$GITHUB_ENV"
           exit 0
         fi
@@ -81,7 +80,7 @@ runs:
         if ! git merge-base --is-ancestor "$_latest_tag_sha" "$GITHUB_SHA"; then
           echo "::warning::The latest tag ($LATEST_SEMVER_TAG -> $_latest_tag_sha) is not an ancestor of this commit ($GITHUB_SHA)."
           echo "::warning::This suggests the tag may be from a newer commit — cannot bump version."
-          echo "version=" >> "$GITHUB_OUTPUT"
+          echo "VERSION=" >> "$GITHUB_ENV"
           echo "IS_DONE=true" >> "$GITHUB_ENV"
           exit 0
         fi
@@ -132,26 +131,32 @@ runs:
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
-        
+
         VERSION=$(python ${{ github.action_path }}/compute_next_version.py)
         echo "Computed version: $VERSION"
         echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
     - id: output-version
-      if: env.IS_DONE != 'true'
+      if: env.IS_DONE != 'true' || env.VERSION != ''
       shell: bash
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
-        ### last minute check that branch has not been updated        
+        #
+        # last minute check that branch has not been updated
+        #
+
         git fetch &> /dev/null
         if git status -sb | grep behind; then
           echo "::warning::This commit is no longer the most recent — aborting."
           exit 0
         fi
 
-        ### output!
+        #
+        # output!
+        #
+
         if [ -z "${{ env.VERSION }}" ]; then
           echo "No version bump needed."
           echo "version=" >> "$GITHUB_OUTPUT"
