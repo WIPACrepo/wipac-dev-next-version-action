@@ -20,6 +20,7 @@ This action is designed for CI/CD workflows that automatically publish new relea
     - `[major]`
     - `[minor]`
     - `[patch]` or `[fix]`
+    - `[no-bump]` (also, see [`force-patch-if-no-commit-token`](#inputs) and [`ignore-paths`](#inputs))
 5. Computes the next version accordingly
 6. Outputs the bumped version, or an empty string if no release is needed
     - The version number does not have a v-prefix (e.g. `1.2.5`)

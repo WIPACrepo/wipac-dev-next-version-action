@@ -55,23 +55,18 @@ runs:
         fi
 
         # get info on what's changed since that tag
-        _that_commit=$(git rev-list -n 1 "$_latest_semver_tag")
-        echo "Looking at what's changed since $_latest_semver_tag / $_that_commit..."
+        export FIRST_COMMIT=$(git rev-list -n 1 "$_latest_semver_tag")
+        echo "Looking at what's changed since $_latest_semver_tag / $FIRST_COMMIT..."
         echo
-        #
-        export CHANGED_FILES=$(git diff --name-only "$_that_commit"..HEAD)  # has newlines
+        
+        export CHANGED_FILES=$(git diff --name-only "$FIRST_COMMIT"..HEAD)  # has newlines
         echo "Changed files:"
         echo "<start>"
         echo "$CHANGED_FILES"
         echo "<end>"
         echo
-        #
-        export COMMIT_LOG=$(git log "$_that_commit"..HEAD --pretty=%B)  # has newlines
-        echo "Commit log(s) since then:"
-        echo "<start>"
-        echo "$COMMIT_LOG"
-        echo "<end>"
-        echo
+        
+        # NOTE: commit logs are retrieved in python script b/c newlines are a pain
 
         # get next version
         VERSION=$(python ${{ github.action_path }}/compute_next_version.py)

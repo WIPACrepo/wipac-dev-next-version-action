@@ -4,6 +4,8 @@ import enum
 import fnmatch
 import logging
 import os
+import subprocess
+
 
 # **************************************************************************************
 # NOTE!
@@ -14,16 +16,49 @@ import os
 
 
 class BumpType(enum.Enum):
-    MAJOR = "MAJOR"
-    MINOR = "MINOR"
-    PATCH = "PATCH"
+    MAJOR = enum.auto()
+    MINOR = enum.auto()
+    PATCH = enum.auto()
+    NO_BUMP = enum.auto()
 
 
-def are_all_files_ignored(changed_files: list[str], ignore_patterns: list[str]) -> bool:
-    """Do all the changed files match the ignore_patterns?"""
+BUMP_TOKENS = {
+    BumpType.MAJOR: ["[major]"],
+    BumpType.MINOR: ["[minor]"],
+    BumpType.PATCH: ["[patch]", "[fix]"],
+    BumpType.NO_BUMP: ["[no-bump]", "[no_bump]"],
+}
+
+
+def _has_bump_token(bump: BumpType, string: str) -> bool:
+    """Does the string have any of the bump type's tokens?"""
+    return any(x in string for x in BUMP_TOKENS[bump])
+
+
+def parse_bump(commit_titles: list[str], force_patch: bool) -> BumpType | None:
+    """Determine the bump type based on the commit log."""
+    commit_titles = [t.lower() for t in commit_titles]  # so token matching is forgiving
+
+    for bump in [BumpType.MAJOR, BumpType.MINOR, BumpType.PATCH]:  # order matters
+        # just one appearance will suffice
+        if any(_has_bump_token(bump, t) for t in commit_titles):
+            return bump
+
+    # for 'no-bump', every commit must indicate that it's 'no-bump'
+    if all(_has_bump_token(BumpType.NO_BUMP, t) for t in commit_titles):
+        return BumpType.NO_BUMP
+
+    if force_patch:  # back-up plan aka the default action
+        return BumpType.PATCH
+    else:
+        return None
+
+
+def are_all_files_ignored(changed_files: list[str], patterns: list[str]) -> bool:
+    """Do all the changed files match the patterns?"""
     for f in changed_files:
         logging.debug(f"Checking if this changed file is ignored: {f}")
-        for pat in ignore_patterns:
+        for pat in patterns:
             if fnmatch.fnmatch(f, pat):
                 logging.debug(f"-> COVERED BY IGNORE-PATTERN: {pat}")
                 break
@@ -35,35 +70,52 @@ def are_all_files_ignored(changed_files: list[str], ignore_patterns: list[str]) 
     return True
 
 
+def get_commit_titles(first_commit: str) -> list[str]:
+    """Get only commit titles (no change descriptions)."""
+    result = subprocess.run(
+        ["git", "log", f"{first_commit}..HEAD", "--pretty=%s"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    titles = [msg.strip() for msg in result.stdout.split("\n") if msg.strip()]
+
+    logging.info(f"Found {len(titles)} commits")
+    logging.info("<start>")
+    for t in titles:
+        logging.info(t)
+    logging.info("<end>")
+
+    return titles
+
+
 def main(
     tag: str,
+    first_commit: str,
     changed_files: list[str],
-    commit_log: str,
-    ignore_patterns: list[str],
+    ignore_path_patterns: list[str],
     force_patch: bool,
 ) -> None:
     """Print the next version of a package; if there's no print, then's no new version."""
     logging.info(f"{tag=}")
+    logging.info(f"{first_commit=}")
     logging.info(f"{changed_files=}")
-    logging.info(f"{commit_log=}")
-    logging.info(f"{ignore_patterns=}")
+    logging.info(f"{ignore_path_patterns=}")
     logging.info(f"{force_patch=}")
 
     # is a version bump needed?
     if not changed_files:
         return logging.info("No changes detected")
-    if are_all_files_ignored(changed_files, ignore_patterns):
+    if are_all_files_ignored(changed_files, ignore_path_patterns):
         return logging.info("None of the changed files require a version bump.")
 
     # detect bump
-    if "[major]" in commit_log:
-        bump = BumpType.MAJOR
-    elif "[minor]" in commit_log:
-        bump = BumpType.MINOR
-    elif ("[patch]" in commit_log) or ("[fix]" in commit_log) or force_patch:
-        bump = BumpType.PATCH
-    else:
-        return logging.info("Commit log doesn't signify a version bump.")
+    commit_titles = get_commit_titles(first_commit)
+    bump = parse_bump(commit_titles, force_patch)
+    if not bump:
+        return logging.info("Commit log(s) don't signify a version bump.")
+    elif bump == BumpType.NO_BUMP:
+        return logging.info("All commit log(s) explicitly signify no version bump.")
 
     # increment
     major, minor, patch = map(int, tag.split("."))
@@ -87,9 +139,9 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     main(
         tag=os.environ["LATEST_SEMVER_TAG_NO_V"],
+        first_commit=os.environ["FIRST_COMMIT"],
         changed_files=os.environ["CHANGED_FILES"].splitlines(),
-        commit_log=os.environ["COMMIT_LOG"].lower(),
-        ignore_patterns=os.environ.get("IGNORE_PATHS", "").strip().splitlines(),
+        ignore_path_patterns=os.environ.get("IGNORE_PATHS", "").strip().splitlines(),
         force_patch=(
             os.environ.get("FORCE_PATCH_IF_NO_COMMIT_TOKEN", "false").lower() == "true"
         ),
