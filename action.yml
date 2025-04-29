@@ -15,7 +15,7 @@ inputs:
 outputs:
   version:
     description: The next semantic version (empty string if no bump is needed)
-    value: ${{ steps.compute.outputs.version }}
+    value: ${{ steps.output-version.outputs.version }}
 
 runs:
   using: "composite"
@@ -25,84 +25,123 @@ runs:
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
-
-        git fetch &> /dev/null
-        if [[ $(git status -sb | grep behind) ]]; then
-          echo "::error::this commit is not most recent on this branch -- rest of workflow should be halted"
+        git fetch --tags &> /dev/null
+        if git status -sb | grep behind; then
+          echo "::warning::This commit is not the most recent on this branch — rest of workflow should be halted."
           exit 1
         fi
 
-    - id: compute
-      env:
-        FORCE_PATCH_IF_NO_COMMIT_TOKEN: ${{ inputs.force-patch-if-no-commit-token }}
-        IGNORE_PATHS: ${{ inputs.ignore-paths }}
+    - name: Get the latest version tag
       shell: bash
       run: |
         set -euo pipefail
         echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
-        echo
-
-        # get the latest semantic-version style tag
+        
         _latest_semver_tag=$(git tag --sort=-creatordate | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
         echo "Latest semantic-version style tag: $_latest_semver_tag"
-        echo
-        if [ -z "$_latest_semver_tag" ]; then
-            echo "No previous semver tag found — using 0.0.0"
-            echo "version=0.0.0" >> "$GITHUB_OUTPUT"
-            exit 0
-        else
-            export LATEST_SEMVER_TAG_NO_V="${_latest_semver_tag#v}"
+        echo "LATEST_SEMVER_TAG=$_latest_semver_tag" >> "$GITHUB_ENV"
+        if [ -n "$_latest_semver_tag" ]; then
+          echo "LATEST_SEMVER_TAG_NO_V=${_latest_semver_tag#v}" >> "$GITHUB_ENV"
         fi
+
+    - name: Handle no previous tag (first release case)
+      if: env.LATEST_SEMVER_TAG == ''
+      id: output-version
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        echo "No previous semver tag found — using 0.0.0."
+        echo "version=0.0.0" >> "$GITHUB_OUTPUT"
+
+    - name: Validate latest tag ancestry
+      if: env.LATEST_SEMVER_TAG != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
         
-        
-        _latest_tag_sha=$(git rev-parse "$_latest_semver_tag")
-        
-        # Case 1: Does this tag (already) point to $GITHUB_SHA?
+        _latest_tag_sha=$(git rev-parse "$LATEST_SEMVER_TAG")
+        echo "Latest tag SHA: $_latest_tag_sha"
+        echo "LATEST_TAG_SHA=$_latest_tag_sha" >> "$GITHUB_ENV"
+
         if [[ "$_latest_tag_sha" == "$GITHUB_SHA" ]]; then
-            echo "::warning::The latest version tag already points to this commit ($GITHUB_SHA) — was this workflow re-run?"
-            echo "version=" >> "$GITHUB_OUTPUT"
-            exit 0
+          echo "::warning::This commit ($GITHUB_SHA) is already tagged ($LATEST_SEMVER_TAG) — no bump needed."
+          echo "version=" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
-        
-        # Case 2: Is the tag older (and in same linear history) as $GITHUB_SHA? 
+
         if ! git merge-base --is-ancestor "$_latest_tag_sha" "$GITHUB_SHA"; then
-            echo "::warning::The latest version tag ($_latest_semver_tag -> $_latest_tag_sha) is not an ancestor of GITHUB_SHA ($GITHUB_SHA)."
-            echo "::warning::This suggests the tag may be from a newer commit — was this workflow re-run? (If not re-run, there may be non-linear history.)"
-            exit 0
+          echo "::warning::The latest tag ($LATEST_SEMVER_TAG -> $_latest_tag_sha) is not an ancestor of this commit ($GITHUB_SHA)."
+          echo "::warning::This suggests the tag may be from a newer commit — cannot bump version."
+          echo "version=" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
+
+    - name: Find changed files
+      if: env.LATEST_SEMVER_TAG != '' && env.LATEST_TAG_SHA != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
         
-        # If here: tag is valid and in our history — proceed with diffing
+        ### get first commit since latest version tag
         
-        # get info on what's changed since that tag
-        export FIRST_COMMIT=$(git rev-list -n 1 "$_latest_semver_tag")
-        echo "Looking at what's changed since $_latest_semver_tag / $FIRST_COMMIT..."
+        FIRST_COMMIT=$(git rev-list -n 1 "$LATEST_SEMVER_TAG")
+        echo "Looking at what's changed since $LATEST_SEMVER_TAG / $FIRST_COMMIT..."
         echo
         
-        export CHANGED_FILES=$(git diff --name-only "$FIRST_COMMIT"..HEAD)  # has newlines
+        # -> env
+        echo "FIRST_COMMIT=$FIRST_COMMIT" >> "$GITHUB_ENV"
+        
+        ### get all the changed file (paths)
+        
+        CHANGED_FILES=$(git diff --name-only "$FIRST_COMMIT"..HEAD)  # has newlines
         echo "Changed files:"
         echo "<start>"
         echo "$CHANGED_FILES"
         echo "<end>"
         echo
         
-        # NOTE: commit logs are retrieved in python script b/c newlines are a pain
-
-        # get next version
-        VERSION=$(python ${{ github.action_path }}/compute_next_version.py)
-        echo
+        # -> env
+        echo "CHANGED_FILES<<EOF" >> "$GITHUB_ENV"
+        echo "$CHANGED_FILES" >> "$GITHUB_ENV"
+        echo "EOF" >> "$GITHUB_ENV"
         
-        # last minute check that branch has not been updated
+        ### NOTE: commit logs are retrieved in python script b/c newlines are a pain 
+
+    - name: Compute next version
+      env:
+        FORCE_PATCH_IF_NO_COMMIT_TOKEN: ${{ inputs.force-patch-if-no-commit-token }}
+        IGNORE_PATHS: ${{ inputs.ignore-paths }}
+        FIRST_COMMIT: ${{ env.FIRST_COMMIT }}
+        CHANGED_FILES: ${{ env.CHANGED_FILES }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        VERSION=$(python ${{ github.action_path }}/compute_next_version.py)
+        echo "Computed version: $VERSION"
+        echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+    - id: output-version
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+
+        # last minute check that branch has not been updated        
         git fetch &> /dev/null
-        if [[ $(git status -sb | grep behind) ]]; then
-          echo "this commit is not most recent on this branch -- rest of action will be aborted"
+        if git status -sb | grep behind; then
+          echo "::warning::This commit is no longer the most recent — aborting."
           exit 0
         fi
-
-        # supply output
-        if [ -z "$VERSION" ]; then
-            echo "No version bump needed"
-            echo "version=" >> "$GITHUB_OUTPUT"
+        
+        # output!
+        if [ -z "${{ env.VERSION }}" ]; then
+          echo "No version bump needed."
+          echo "version=" >> "$GITHUB_OUTPUT"
         else
-            echo "Next version: $VERSION"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Next version: ${{ env.VERSION }}"
+          echo "version=${{ env.VERSION }}" >> "$GITHUB_OUTPUT"
         fi
