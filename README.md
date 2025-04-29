@@ -53,7 +53,7 @@ jobs:
     ...
   ]
   runs-on: ubuntu-latest
-  concurrency: tag-new-version  # prevent any possible race conditions
+  concurrency: release  # prevent any possible race conditions
   steps:
     - uses: actions/checkout@v4
       with:
