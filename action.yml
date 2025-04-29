@@ -23,8 +23,8 @@ runs:
     - name: Confirm most recent commit
       shell: bash
       run: |
-        set -euo pipefail
-        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        # step: Confirm most recent commit
+        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         git fetch --tags &> /dev/null
         if git status -sb | grep behind; then
@@ -36,8 +36,8 @@ runs:
       if: env.IS_DONE != 'true'
       shell: bash
       run: |
-        set -euo pipefail
-        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        # step: Get the latest version tag
+        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         _latest_semver_tag=$(git tag --sort=-creatordate | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
         echo "Latest semantic-version style tag: $_latest_semver_tag"
@@ -50,8 +50,8 @@ runs:
       if: env.IS_DONE != 'true' && env.LATEST_SEMVER_TAG == ''
       shell: bash
       run: |
-        set -euo pipefail
-        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        # step: Handle no previous tag (first release case)
+        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         echo "No previous semver tag found — using 0.0.0."
         echo "VERSION=0.0.0" >> "$GITHUB_ENV"
@@ -61,8 +61,8 @@ runs:
       if: env.IS_DONE != 'true'
       shell: bash
       run: |
-        set -euo pipefail
-        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        # step: Validate latest tag commit ancestry
+        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         _latest_tag_sha=$(git rev-parse "$LATEST_SEMVER_TAG")
         echo "Latest tag SHA: $_latest_tag_sha"
@@ -89,8 +89,8 @@ runs:
       if: env.IS_DONE != 'true'
       shell: bash
       run: |
-        set -euo pipefail
-        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        # step: Find first commit since latest version tag
+        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         FIRST_COMMIT=$(git rev-list -n 1 "$LATEST_SEMVER_TAG")
         
@@ -103,8 +103,8 @@ runs:
       if: env.IS_DONE != 'true'
       shell: bash
       run: |
-        set -euo pipefail
-        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        # step: Find changed file paths
+        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         CHANGED_FILES=$(git diff --name-only "$FIRST_COMMIT"..HEAD)  # has newlines
         
@@ -129,8 +129,8 @@ runs:
         CHANGED_FILES: ${{ env.CHANGED_FILES }}
       shell: bash
       run: |
-        set -euo pipefail
-        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        # step: Compute next version
+        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         VERSION=$(python ${{ github.action_path }}/compute_next_version.py)
         echo "Computed version: $VERSION"
@@ -140,8 +140,8 @@ runs:
       if: env.IS_DONE != 'true' || env.VERSION != ''
       shell: bash
       run: |
-        set -euo pipefail
-        echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+        # step: output-version
+        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
         #
         # last minute check that branch has not been updated
