@@ -53,7 +53,26 @@ runs:
         else
             export LATEST_SEMVER_TAG_NO_V="${_latest_semver_tag#v}"
         fi
-
+        
+        
+        _latest_tag_sha=$(git rev-parse "$_latest_semver_tag")
+        
+        # Case 1: Does this tag (already) point to $GITHUB_SHA?
+        if [[ "$_latest_tag_sha" == "$GITHUB_SHA" ]]; then
+            echo "::warning::The latest version tag already points to this commit ($GITHUB_SHA) — was this workflow re-run?"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+        fi
+        
+        # Case 2: Is the tag older (and in same linear history) as $GITHUB_SHA? 
+        if ! git merge-base --is-ancestor "$_latest_tag_sha" "$GITHUB_SHA"; then
+            echo "::warning::The latest version tag ($_latest_semver_tag -> $_latest_tag_sha) is not an ancestor of GITHUB_SHA ($GITHUB_SHA)."
+            echo "::warning::This suggests the tag may be from a newer commit — was this workflow re-run? (If not re-run, there may be non-linear history.)"
+            exit 0
+        fi
+        
+        # If here: tag is valid and in our history — proceed with diffing
+        
         # get info on what's changed since that tag
         export FIRST_COMMIT=$(git rev-list -n 1 "$_latest_semver_tag")
         echo "Looking at what's changed since $_latest_semver_tag / $FIRST_COMMIT..."
