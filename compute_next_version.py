@@ -36,7 +36,7 @@ def _has_bump_token(bump: BumpType, string: str) -> bool:
     return any(x in string for x in BUMP_TOKENS[bump])
 
 
-def parse_bump(commit_titles: list[str], force_patch: bool) -> Optional[BumpType, None]:
+def parse_bump(commit_titles: list[str], force_patch: bool) -> Optional[BumpType]:
     """Determine the bump type based on the commit log."""
     commit_titles = [t.lower() for t in commit_titles]  # so token matching is forgiving
 
