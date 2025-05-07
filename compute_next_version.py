@@ -5,12 +5,13 @@ import fnmatch
 import logging
 import os
 import subprocess
+from typing import Optional
 
 
 # **************************************************************************************
 # NOTE!
 #
-# THIS MUST BE COMPATIBLE WITH THE LOWEST SUPPORTED PYTHON VERSION
+# THIS MUST BE COMPATIBLE WITH THE LOWEST SUPPORTED PYTHON VERSION (py 3.9 as of 2025)
 # -> FANCINESS WILL HAVE TO WAIT
 # **************************************************************************************
 
@@ -35,7 +36,7 @@ def _has_bump_token(bump: BumpType, string: str) -> bool:
     return any(x in string for x in BUMP_TOKENS[bump])
 
 
-def parse_bump(commit_titles: list[str], force_patch: bool) -> BumpType | None:
+def parse_bump(commit_titles: list[str], force_patch: bool) -> Optional[BumpType, None]:
     """Determine the bump type based on the commit log."""
     commit_titles = [t.lower() for t in commit_titles]  # so token matching is forgiving
 
