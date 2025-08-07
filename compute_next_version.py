@@ -26,7 +26,7 @@ class BumpType(enum.Enum):
 BUMP_TOKENS = {
     BumpType.MAJOR: ["[major]"],
     BumpType.MINOR: ["[minor]"],
-    BumpType.PATCH: ["[patch]", "[fix]"],
+    BumpType.PATCH: ["[patch]", "[fix]", "[bump]"],
     BumpType.NO_BUMP: ["[no-bump]", "[no_bump]", "[nobump]"],
 }
 
@@ -36,7 +36,7 @@ def _has_bump_token(bump: BumpType, string: str) -> bool:
     return any(x in string for x in BUMP_TOKENS[bump])
 
 
-def parse_bump(commit_titles: list[str], force_patch: bool) -> Optional[BumpType]:
+def parse_bump_from_commit_titles(commit_titles: list[str]) -> Optional[BumpType]:
     """Determine the bump type based on the commit log."""
     commit_titles = [t.lower() for t in commit_titles]  # so token matching is forgiving
 
@@ -49,14 +49,14 @@ def parse_bump(commit_titles: list[str], force_patch: bool) -> Optional[BumpType
     if all(_has_bump_token(BumpType.NO_BUMP, t) for t in commit_titles):
         return BumpType.NO_BUMP
 
-    if force_patch:  # back-up plan aka the default action
-        return BumpType.PATCH
-    else:
-        return None
+    return None
 
 
 def are_all_files_ignored(changed_files: list[str], patterns: list[str]) -> bool:
     """Do all the changed files match the patterns?"""
+    if not changed_files:
+        return True  # think: git commit --allow-empty -m "Trigger CI pipeline"
+
     for f in changed_files:
         logging.debug(f"Checking if this changed file is ignored: {f}")
         for pat in patterns:
@@ -104,19 +104,25 @@ def main(
     logging.info(f"{ignore_path_patterns=}")
     logging.info(f"{force_patch=}")
 
-    # is a version bump needed?
-    if not changed_files:
-        return logging.info("No changes detected")
-    if are_all_files_ignored(changed_files, ignore_path_patterns):
-        return logging.info("None of the changed files require a version bump.")
+    # NOTE: we don't actually care if there are any changed files --
+    #       think: git commit --allow-empty -m "Trigger CI pipeline [bump]"
 
     # detect bump
-    commit_titles = get_commit_titles(first_commit)
-    bump = parse_bump(commit_titles, force_patch)
-    if not bump:
-        return logging.info("Commit log(s) don't signify a version bump.")
-    elif bump == BumpType.NO_BUMP:
+    bump = parse_bump_from_commit_titles(get_commit_titles(first_commit))
+    if bump == BumpType.NO_BUMP:
         return logging.info("All commit log(s) explicitly signify no version bump.")
+    elif not bump:
+        # okay, user didn't include a bump string in their commit, what's the back-up plan?
+
+        # all the changed files are ignored, so no bump
+        if are_all_files_ignored(changed_files, ignore_path_patterns):
+            return logging.info("None of the changed files require a version bump.")
+
+        # default to a patch bump?
+        if force_patch:
+            bump = BumpType.PATCH
+        else:
+            return logging.info("Commit log(s) don't signify a version bump.")
 
     # increment
     major, minor, patch = map(int, tag.split("."))

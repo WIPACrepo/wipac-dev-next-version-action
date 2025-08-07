@@ -14,23 +14,25 @@ This action is designed for CI/CD workflows that automatically publish new relea
 ## How it Works
 
 1. Finds the most recent tag matching `vX.Y.Z` or `X.Y.Z`
-2. Gets the commit diff since that tag
-3. Checks if the changed files are all ignorable
-4. Inspects commit messages for one of:
+2. Gets the git diff since that tag
+3. Inspects the new commit messages (titles) for one of the following "bump strings":
     - `[major]`
     - `[minor]`
-    - `[patch]` or `[fix]`
-    - `[no-bump]` (also, see [`force-patch-if-no-commit-token`](#inputs) and [`ignore-paths`](#inputs))
+    - `[patch]`, `[fix]`, or `[bump]`
+    - `[no-bump]`
+4. If there weren't any "bump strings"
+    - checks if the changed files are all ignorable (see [`ignore-paths`](#inputs)), or
+    - whether to make a patch bump anyways (see [`force-patch-if-no-commit-token`](#inputs))
 5. Computes the next version accordingly
 6. Outputs the bumped version, or an empty string if no release is needed
     - The version number does not have a v-prefix (e.g. `1.2.5`)
 
 ## Inputs
 
-| Name                             | Required | Default   | Description                                                                                                  |
-|----------------------------------|----------|-----------|--------------------------------------------------------------------------------------------------------------|
-| `force-patch-if-no-commit-token` | `false`  | `"false"` | If true, bumps a patch version even if no commit message contains a bump token                               |
-| `ignore-paths`                   | `false`  | `""`      | Newline-delimited glob patterns (e.g. `resources/**`) — if all changed files match these, no release is made |
+| Name                             | Required | Default   | Description                                                                                                                               |
+|----------------------------------|----------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `force-patch-if-no-commit-token` | `false`  | `"false"` | If true, bumps a patch version even if no commit message contains a "bump string"                                                         |
+| `ignore-paths`                   | `false`  | `""`      | Newline-delimited glob patterns (e.g. `resources/**`) — if all changed files match these and there's no "bump string", no release is made |
 
 ## Outputs
 
