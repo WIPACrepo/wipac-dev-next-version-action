@@ -95,6 +95,7 @@ def get_commit_titles(first_commit: str) -> list[str]:
 
 
 def major_bump(major: int) -> tuple[int, int, int]:
+    """Increment for a major bump."""
     major += 1
     minor = 0
     patch = 0
@@ -102,14 +103,49 @@ def major_bump(major: int) -> tuple[int, int, int]:
 
 
 def minor_bump(major: int, minor: int) -> tuple[int, int, int]:
+    """Increment for a minor bump."""
     minor += 1
     patch = 0
     return major, minor, patch
 
 
 def patch_bump(major: int, minor: int, patch: int) -> tuple[int, int, int]:
+    """Increment for a patch bump."""
     patch += 1
     return major, minor, patch
+
+
+def increment_bump(tag: str, bump: BumpType, version_style: str) -> str:
+    """Figure the next version and return as a string."""
+    major, minor, patch = map(int, tag.split("."))
+
+    # MAJOR bump
+    if bump == BumpType.MAJOR:
+        major, minor, patch = major_bump(major)
+    # MINOR bump
+    elif bump == BumpType.MINOR:
+        major, minor, patch = minor_bump(major, minor)
+    # PATCH bump
+    elif bump == BumpType.PATCH:
+        # X.Y.Z -> normal
+        if version_style == VERSION_STYLE_X_Y_Z:
+            major, minor, patch = patch_bump(major, minor, patch)
+        # X.Y -> a patch bump is equivalent to a minor bump
+        elif version_style == VERSION_STYLE_X_Y:
+            major, minor, patch = minor_bump(major, minor)
+            # 'patch' value ^^^ will be ignored in the end
+        else:
+            raise ValueError(f"Invalid version style: {version_style}")
+    else:
+        raise ValueError(f"Bump type not supported: {bump}")
+
+    # stringify the next version
+    if version_style == VERSION_STYLE_X_Y_Z:
+        return f"{major}.{minor}.{patch}"
+    elif version_style == VERSION_STYLE_X_Y:
+        return f"{major}.{minor}"  # no patch
+    else:
+        raise ValueError(f"Invalid version style: {version_style}")
 
 
 def main(
@@ -148,35 +184,9 @@ def main(
         else:
             return logging.info("Commit log(s) don't signify a version bump.")
 
-    # increment
-    major, minor, patch = map(int, tag.split("."))
-    # MAJOR bump
-    if bump == BumpType.MAJOR:
-        major, minor, patch = major_bump(major)
-    # MINOR bump
-    elif bump == BumpType.MINOR:
-        major, minor, patch = minor_bump(major, minor)
-    # PATCH bump
-    elif bump == BumpType.PATCH:
-        # X.Y.Z -> normal
-        if version_style == VERSION_STYLE_X_Y_Z:
-            major, minor, patch = patch_bump(major, minor, patch)
-        # X.Y -> a patch bump is equivalent to a minor bump
-        elif version_style == VERSION_STYLE_X_Y:
-            major, minor, patch = minor_bump(major, minor)
-            # ^^^ 'patch' value will be discarded in the end
-        else:
-            raise ValueError(f"Invalid version style: {version_style}")
-    else:
-        raise ValueError(f"Bump type not supported: {bump}")
-
-    # print the next version
-    if version_style == VERSION_STYLE_X_Y_Z:
-        print(f"{major}.{minor}.{patch}")
-    elif version_style == VERSION_STYLE_X_Y:
-        print(f"{major}.{minor}")
-    else:
-        raise ValueError(f"Invalid version style: {version_style}")
+    # increment bump
+    next_version = increment_bump(tag, bump, version_style)
+    print(next_version)
 
 
 if __name__ == "__main__":
