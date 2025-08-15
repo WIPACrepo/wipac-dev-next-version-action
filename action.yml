@@ -66,10 +66,17 @@ runs:
             ;;
         esac
 
-        _latest_version_tag=$(git tag --sort=-creatordate | grep -E "${_re}" | head -n1 || true)
-        echo "Latest tag (style ${VERSION_STYLE}): $_latest_version_tag"
+        #
+        # Use for-each-ref for robust tag listing/sorting
+        #
+        _latest_version_tag=$(
+          git for-each-ref --sort=-creatordate --format='%(refname:strip=2)' refs/tags |
+          grep -E "${_re}" | head -n1 || true
+        )
+        echo "Latest tag (style ${VERSION_STYLE}): ${_latest_version_tag:-}"
 
-        echo "LATEST_VERSION_TAG=${_latest_version_tag}" >> "$GITHUB_ENV"
+        # Explicitly export (even if empty)
+        echo "LATEST_VERSION_TAG=${_latest_version_tag:-}" >> "$GITHUB_ENV"
 
     - name: Handle no previous tag (first release case)
       if: env.IS_DONE != 'true' && env.LATEST_VERSION_TAG == ''

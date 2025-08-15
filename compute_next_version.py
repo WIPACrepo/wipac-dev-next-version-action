@@ -70,13 +70,13 @@ def are_all_files_ignored(changed_files: list[str], patterns: list[str]) -> bool
 
     for f in changed_files:
         logging.debug(f"Checking if this changed file is ignored: {f}")
+        matched = False
         for pat in patterns:
             if fnmatch.fnmatch(f, pat):
                 logging.debug(f"-> COVERED BY IGNORE-PATTERN: {pat}")
+                matched = True
                 break
-            else:
-                logging.debug(f"-> nope: {pat}")
-        else:  # <- if no 'break'
+        if not matched:
             logging.info(f"Found a changed non-ignored file: {f}")
             return False
     return True
@@ -131,7 +131,7 @@ def increment_bump(version_tag: str, bump: BumpType, version_style: str) -> str:
             major, minor, patch = map(int, version_tag.split("."))
         elif version_style == VERSION_STYLE_X_Y:
             major, minor = map(int, version_tag.split("."))
-            patch = -1
+            patch = 0  # ignored for X.Y
         else:
             raise InvalidVersionStyle(version_style)
     except ValueError as e:
