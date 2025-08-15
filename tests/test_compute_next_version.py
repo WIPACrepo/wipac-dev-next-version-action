@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from subprocess import CompletedProcess
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import compute_next_version as mod
 
