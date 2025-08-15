@@ -11,6 +11,16 @@ inputs:
     description: Newline-delimited list of file/directory globs to ignore when checking changed files
     required: false
     default: ""
+  version-style:
+    description: |
+      Your project's style of versioning. 
+      Example: 'X.Y.Z' (default), 'X.Y' (no patch segment)
+    type: choice
+    options:
+      - 'X.Y.Z'
+      - 'X.Y'
+    required: false
+    default: 'X.Y.Z'
 
 outputs:
   version:
@@ -127,6 +137,7 @@ runs:
         IGNORE_PATHS: ${{ inputs.ignore-paths }}
         FIRST_COMMIT: ${{ env.FIRST_COMMIT }}
         CHANGED_FILES: ${{ env.CHANGED_FILES }}
+        VERSION_STYLE: ${{ inputs.version-style }}
       shell: bash
       run: |
         # step: Compute next version

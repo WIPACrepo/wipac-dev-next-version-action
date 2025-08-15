@@ -20,6 +20,13 @@ VERSION_STYLE_X_Y_Z = "X.Y.Z"  # ex: 1.12.3
 VERSION_STYLE_X_Y = "X.Y"  # ex: 0.51
 
 
+class InvalidVersionStyle(RuntimeError):
+    """Raised when the version style is invalid."""
+
+    def __init__(self, version_style: str):
+        super().__init__(f"Invalid version style: {version_style}")
+
+
 class BumpType(enum.Enum):
     MAJOR = enum.auto()
     MINOR = enum.auto()
@@ -117,7 +124,19 @@ def patch_bump(major: int, minor: int, patch: int) -> tuple[int, int, int]:
 
 def increment_bump(tag: str, bump: BumpType, version_style: str) -> str:
     """Figure the next version and return as a string."""
-    major, minor, patch = map(int, tag.split("."))
+
+    # get the starting version segments
+    try:
+        if version_style == VERSION_STYLE_X_Y_Z:
+            major, minor, patch = map(int, tag.split("."))
+        elif version_style == VERSION_STYLE_X_Y:
+            major, minor = map(int, tag.split("."))
+        else:
+            raise InvalidVersionStyle(version_style)
+    except ValueError as e:
+        raise ValueError(
+            f"Could not parse version from {tag=} for {version_style=}"
+        ) from e
 
     # MAJOR bump
     if bump == BumpType.MAJOR:
@@ -130,12 +149,12 @@ def increment_bump(tag: str, bump: BumpType, version_style: str) -> str:
         # X.Y.Z -> normal
         if version_style == VERSION_STYLE_X_Y_Z:
             major, minor, patch = patch_bump(major, minor, patch)
-        # X.Y -> a patch bump is equivalent to a minor bump
+        # X.Y -> a PATCH bump is equivalent to a MINOR bump
         elif version_style == VERSION_STYLE_X_Y:
             major, minor, patch = minor_bump(major, minor)
             # 'patch' value ^^^ will be ignored in the end
         else:
-            raise ValueError(f"Invalid version style: {version_style}")
+            raise InvalidVersionStyle(version_style)
     else:
         raise ValueError(f"Bump type not supported: {bump}")
 
@@ -145,7 +164,7 @@ def increment_bump(tag: str, bump: BumpType, version_style: str) -> str:
     elif version_style == VERSION_STYLE_X_Y:
         return f"{major}.{minor}"  # no patch
     else:
-        raise ValueError(f"Invalid version style: {version_style}")
+        raise InvalidVersionStyle(version_style)
 
 
 def main(
