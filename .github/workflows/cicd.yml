@@ -84,5 +84,6 @@ jobs:
         run: |
           set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
           pip install -r requirements.txt
+          pip install -r requirements-dev.txt
           pip install pytest
           pytest tests/
