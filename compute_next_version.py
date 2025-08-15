@@ -15,6 +15,10 @@ from typing import Optional
 # -> FANCINESS WILL HAVE TO WAIT
 # **************************************************************************************
 
+# version styles -- could be a StrEnum but that is py 3.11+
+VERSION_STYLE_X_Y_Z = "X.Y.Z"  # ex: 1.12.3
+VERSION_STYLE_X_Y = "X.Y"  # ex: 0.51
+
 
 class BumpType(enum.Enum):
     MAJOR = enum.auto()
@@ -90,12 +94,31 @@ def get_commit_titles(first_commit: str) -> list[str]:
     return titles
 
 
+def major_bump(major: int) -> tuple[int, int, int]:
+    major += 1
+    minor = 0
+    patch = 0
+    return major, minor, patch
+
+
+def minor_bump(major: int, minor: int) -> tuple[int, int, int]:
+    minor += 1
+    patch = 0
+    return major, minor, patch
+
+
+def patch_bump(major: int, minor: int, patch: int) -> tuple[int, int, int]:
+    patch += 1
+    return major, minor, patch
+
+
 def main(
     tag: str,
     first_commit: str,
     changed_files: list[str],
     ignore_path_patterns: list[str],
     force_patch: bool,
+    version_style: str,
 ) -> None:
     """Print the next version of a package; if there's no print, then's no new version."""
     logging.info(f"{tag=}")
@@ -103,6 +126,7 @@ def main(
     logging.info(f"{changed_files=}")
     logging.info(f"{ignore_path_patterns=}")
     logging.info(f"{force_patch=}")
+    logging.info(f"{version_style=}")
 
     # NOTE: we don't actually care if there are any changed files --
     #       think: git commit --allow-empty -m "Trigger CI pipeline [bump]"
@@ -126,20 +150,33 @@ def main(
 
     # increment
     major, minor, patch = map(int, tag.split("."))
+    # MAJOR bump
     if bump == BumpType.MAJOR:
-        major += 1
-        minor = 0
-        patch = 0
+        major, minor, patch = major_bump(major)
+    # MINOR bump
     elif bump == BumpType.MINOR:
-        minor += 1
-        patch = 0
+        major, minor, patch = minor_bump(major, minor)
+    # PATCH bump
     elif bump == BumpType.PATCH:
-        patch += 1
+        # X.Y.Z -> normal
+        if version_style == VERSION_STYLE_X_Y_Z:
+            major, minor, patch = patch_bump(major, minor, patch)
+        # X.Y -> a patch bump is equivalent to a minor bump
+        elif version_style == VERSION_STYLE_X_Y:
+            major, minor, patch = minor_bump(major, minor)
+            # ^^^ 'patch' value will be discarded in the end
+        else:
+            raise ValueError(f"Invalid version style: {version_style}")
     else:
         raise ValueError(f"Bump type not supported: {bump}")
 
     # print the next version
-    print(f"{major}.{minor}.{patch}")
+    if version_style == VERSION_STYLE_X_Y_Z:
+        print(f"{major}.{minor}.{patch}")
+    elif version_style == VERSION_STYLE_X_Y:
+        print(f"{major}.{minor}")
+    else:
+        raise ValueError(f"Invalid version style: {version_style}")
 
 
 if __name__ == "__main__":
@@ -152,4 +189,5 @@ if __name__ == "__main__":
         force_patch=(
             os.environ.get("FORCE_PATCH_IF_NO_COMMIT_TOKEN", "false").lower() == "true"
         ),
+        version_style=os.environ.get("VERSION_STYLE", VERSION_STYLE_X_Y_Z).upper(),
     )
