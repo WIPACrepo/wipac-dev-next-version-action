@@ -124,7 +124,6 @@ def patch_bump(major: int, minor: int, patch: int) -> tuple[int, int, int]:
 
 def increment_bump(version_tag: str, bump: BumpType, version_style: str) -> str:
     """Figure the next version and return as a string."""
-
     # get the starting version segments
     try:
         if version_style == VERSION_STYLE_X_Y_Z:
@@ -168,7 +167,7 @@ def increment_bump(version_tag: str, bump: BumpType, version_style: str) -> str:
         raise InvalidVersionStyle(version_style)
 
 
-def main(
+def work(
     version_tag: str,
     first_commit: str,
     changed_files: list[str],
@@ -176,7 +175,7 @@ def main(
     force_patch: bool,
     version_style: str,
 ) -> None:
-    """Print the next version of a package; if there's no print, then's no new version."""
+    """Core behavior: detect bump and print the next version (or nothing)."""
     logging.info(f"{version_tag=}")
     logging.info(f"{first_commit=}")
     logging.info(f"{changed_files=}")
@@ -209,9 +208,11 @@ def main(
     print(next_version)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Parse environment variables, configure logging, and run work()."""
     logging.basicConfig(level=logging.DEBUG)
-    main(
+
+    work(
         version_tag=os.environ["LATEST_VERSION_TAG"].lower().lstrip("v"),
         first_commit=os.environ["FIRST_COMMIT"],
         changed_files=os.environ["CHANGED_FILES"].splitlines(),
@@ -221,3 +222,7 @@ if __name__ == "__main__":
         ),
         version_style=os.environ.get("VERSION_STYLE", VERSION_STYLE_X_Y_Z).upper(),
     )
+
+
+if __name__ == "__main__":
+    main()
