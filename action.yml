@@ -132,6 +132,8 @@ runs:
         # step: Compute next version
         set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
+        pip install -r ${{ github.action_path }}/requirements.txt
+
         VERSION=$(python ${{ github.action_path }}/compute_next_version.py)
         echo "Computed version: $VERSION"
         echo "VERSION=$VERSION" >> "$GITHUB_ENV"
