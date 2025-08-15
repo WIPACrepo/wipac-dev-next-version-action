@@ -122,20 +122,21 @@ def patch_bump(major: int, minor: int, patch: int) -> tuple[int, int, int]:
     return major, minor, patch
 
 
-def increment_bump(tag: str, bump: BumpType, version_style: str) -> str:
+def increment_bump(version_tag: str, bump: BumpType, version_style: str) -> str:
     """Figure the next version and return as a string."""
 
     # get the starting version segments
     try:
         if version_style == VERSION_STYLE_X_Y_Z:
-            major, minor, patch = map(int, tag.split("."))
+            major, minor, patch = map(int, version_tag.split("."))
         elif version_style == VERSION_STYLE_X_Y:
-            major, minor = map(int, tag.split("."))
+            major, minor = map(int, version_tag.split("."))
+            patch = -1
         else:
             raise InvalidVersionStyle(version_style)
     except ValueError as e:
         raise ValueError(
-            f"Could not parse version from {tag=} for {version_style=}"
+            f"Could not parse version from {version_tag=} for {version_style=}"
         ) from e
 
     # MAJOR bump
@@ -168,7 +169,7 @@ def increment_bump(tag: str, bump: BumpType, version_style: str) -> str:
 
 
 def main(
-    tag: str,
+    version_tag: str,
     first_commit: str,
     changed_files: list[str],
     ignore_path_patterns: list[str],
@@ -176,7 +177,7 @@ def main(
     version_style: str,
 ) -> None:
     """Print the next version of a package; if there's no print, then's no new version."""
-    logging.info(f"{tag=}")
+    logging.info(f"{version_tag=}")
     logging.info(f"{first_commit=}")
     logging.info(f"{changed_files=}")
     logging.info(f"{ignore_path_patterns=}")
@@ -204,14 +205,14 @@ def main(
             return logging.info("Commit log(s) don't signify a version bump.")
 
     # increment bump
-    next_version = increment_bump(tag, bump, version_style)
+    next_version = increment_bump(version_tag, bump, version_style)
     print(next_version)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     main(
-        tag=os.environ["LATEST_SEMVER_TAG_NO_V"],
+        version_tag=os.environ["LATEST_VERSION_TAG"].lower().lstrip("v"),
         first_commit=os.environ["FIRST_COMMIT"],
         changed_files=os.environ["CHANGED_FILES"].splitlines(),
         ignore_path_patterns=os.environ.get("IGNORE_PATHS", "").strip().splitlines(),
