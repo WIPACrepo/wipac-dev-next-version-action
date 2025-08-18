@@ -6,6 +6,7 @@ import fnmatch
 import logging
 import os
 import subprocess
+from collections import OrderedDict
 from typing import Optional
 
 from wipac_dev_tools import from_environment_as_dataclass
@@ -48,12 +49,14 @@ class BumpType(enum.Enum):
     NO_BUMP = enum.auto()
 
 
-BUMP_TOKENS = {
-    BumpType.MAJOR: ["[major]"],
-    BumpType.MINOR: ["[minor]"],
-    BumpType.PATCH: ["[patch]", "[fix]", "[bump]"],
-    BumpType.NO_BUMP: ["[no-bump]", "[no_bump]", "[nobump]"],
-}
+BUMP_TOKENS = OrderedDict(  # ordered by precedence
+    {
+        BumpType.MAJOR: ["[major]"],
+        BumpType.MINOR: ["[minor]"],
+        BumpType.PATCH: ["[patch]", "[fix]", "[bump]"],
+        BumpType.NO_BUMP: ["[no-bump]", "[no_bump]", "[nobump]"],
+    }
+)
 
 
 def _has_bump_token(bump: BumpType, string: str) -> bool:
@@ -119,7 +122,7 @@ class Commit:
             raise DisqualifiedCommit()
 
 
-def get_commits_with_changes(first_commit: str, force_patch: bool) -> list[Commit]:
+def get_commits_with_changes(first_commit: str) -> list[Commit]:
     """Return a list of Commit objects for commits in FIRST..HEAD.
 
     We use a record separator between commits and a unit separator between sha/title.
@@ -238,96 +241,33 @@ def increment_bump(version_tag: str, bump: BumpType, version_style: str) -> str:
         raise InvalidVersionStyle(version_style)
 
 
-def _decide_bump_from_commits(
-    commits: list[Commit],
-    ignore_path_patterns: list[str],
-    force_patch: bool,
-) -> Optional[BumpType]:
-    """Decide bump type considering per-commit titles and per-commit files.
-
-    Precedence (short version):
-      1) Any [major] anywhere -> MAJOR
-      2) Else any [minor] anywhere -> MINOR
-      3) Else any [patch]/[fix]/[bump] anywhere -> PATCH
-      4) Else if ANY [no-bump] and every *tokenless* commit has only ignored-file changes -> NO_BUMP
-      5) Else if any *tokenless* commit has a non-ignored change -> PATCH if force_patch else None
-      6) Else -> None
-
-    Notes:
-      • We deliberately ignore [no-bump] *inside* the loop (don’t special-case per commit).
-        It is only used as a global guard in step (4).
-      • “Tokenless” means a commit whose title has no [major]/[minor]/[patch]/[fix]/[bump]/[no-bump].
-      • Explicit tokens always win: MAJOR > MINOR > PATCH.
-    """
-    titles_lower = [c.title_lower for c in commits]
-
-    # (1–3) Explicit bumps win, in order
-    for bump in (BumpType.MAJOR, BumpType.MINOR, BumpType.PATCH):
-        if any(_has_bump_token(bump, t) for t in titles_lower):
-            return bump
-
-    # Do we have any [no-bump] anywhere? (global guard checked later)
-    any_no_bump = any(_has_bump_token(BumpType.NO_BUMP, t) for t in titles_lower)
-
-    # Identify commits that are truly "tokenless" (no explicit bump and not [no-bump])
-    def _is_tokenless(c: Commit) -> bool:
-        return not (
-            _has_bump_token(BumpType.MAJOR, c.title_lower)
-            or _has_bump_token(BumpType.MINOR, c.title_lower)
-            or _has_bump_token(BumpType.PATCH, c.title_lower)
-            or _has_bump_token(BumpType.NO_BUMP, c.title_lower)
-        )
-
-    # Did any *tokenless* commit change a non-ignored file?
-    any_tokenless_with_effective_change = any(
-        _commit_has_non_ignored_changes(c.changed_files, ignore_path_patterns)
-        for c in commits
-        if _is_tokenless(c)
-    )
-
-    # (4) If there's at least one [no-bump] and no tokenless commits with real changes -> NO_BUMP
-    if any_no_bump and not any_tokenless_with_effective_change:
-        return BumpType.NO_BUMP
-
-    # (5) Tokenless commit(s) with real changes -> fallback
-    if any_tokenless_with_effective_change:
-        return BumpType.PATCH if force_patch else None
-
-    # (6) Nothing to do
-    return None
-
-
 def work(
     version_tag: str,
     first_commit: str,
-    # ignore_path_patterns: list[str],
-    # force_patch: bool,
     version_style: str,
 ) -> None:
     """Core behavior: detect bump and print the next version (or nothing)."""
     logging.info(f"{version_tag=}")
     logging.info(f"{first_commit=}")
-    logging.info(f"{ignore_path_patterns=}")
-    logging.info(f"{force_patch=}")
     logging.info(f"{version_style=}")
 
     # Pull commits with their own changed files
-    commits = get_commits_with_changes(first_commit, force_patch)
+    commits = get_commits_with_changes(first_commit)
 
-    # Decide bump (per-commit aware)
-    bump = _decide_bump_from_commits(commits, ignore_path_patterns, force_patch)
+    # Decide bump
+    max_bump = None
+    for b in BUMP_TOKENS:
+        if b in [c.bump_type for c in commits]:
+            max_bump = b
 
-    if bump == BumpType.NO_BUMP:
+    # no bumping needed?
+    if max_bump == BumpType.NO_BUMP:
         return logging.info("Commit set signifies no version bump.")
-    elif not bump:
-        # Fallback: if aggregate changes are all ignored -> no bump
-        if are_all_files_ignored(changed_files, ignore_path_patterns):
-            return logging.info("None of the changed files require a version bump.")
-        # Otherwise: still no explicit token; if force_patch is False, do nothing
+    elif not max_bump:
         return logging.info("Commit log(s) don't signify a version bump.")
 
     # increment bump
-    next_version = increment_bump(version_tag, bump, version_style)
+    next_version = increment_bump(version_tag, max_bump, version_style)
     print(next_version)
 
 
