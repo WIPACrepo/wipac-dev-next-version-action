@@ -131,14 +131,7 @@ class BumpableCommit:
 
 
 def get_bumpable_commits(first_commit: str) -> list[BumpableCommit]:
-    """Return a list of Commit objects for commits in FIRST..HEAD which warrant bumping.
-
-    Strategy (no control-char separators):
-      1) List SHAs in the range.
-      2) For each SHA:
-         - title:   `git show -s --format=%s <sha>`
-         - files:   `git diff-tree --no-commit-id --name-only -r <sha>`
-    """
+    """Return a list of Commit objects for commits in FIRST..HEAD which warrant bumping."""
 
     # 1) SHAs in FIRST..HEAD (newest first to match your prior behavior)
     rev_list = subprocess.run(
@@ -280,7 +273,6 @@ def work(
         [c.bump_type for c in commits],
         key=lambda x: -1 * list(BUMP_TOKENS.keys()).index(x),  # -1 makes it a max
     )
-    # -- no bumping needed?
     if max_bump == BumpType.NO_BUMP:
         raise RuntimeError("detected [no-bump] after commit filtering")
 
