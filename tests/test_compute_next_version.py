@@ -35,34 +35,72 @@ def _mock_git_log_run(titles: list[str]):
 
 def test_000_parse_bump_detects_major_minor_patch():
     """Tokens [major], [minor], [patch]/[fix]/[bump] are detected with precedence."""
-    titles = [
-        "feat: add X [minor]",
-        "fix: small bug [patch]",
-        "chore: stuff",
-        "BREAKING: api [major]",
-    ]
-    assert mod.parse_bump_from_commit_titles(titles) == mod.BumpType.MAJOR
+    assert (
+        mod.parse_bump_from_commit_titles(
+            [
+                "feat: add X [minor]",
+                "fix: small bug [patch]",
+                "chore: stuff",
+                "BREAKING: api [major]",
+            ]
+        )
+        == mod.BumpType.MAJOR
+    )
 
-    titles2 = ["feat: add X [minor]", "fix: typo [patch]"]
-    assert mod.parse_bump_from_commit_titles(titles2) == mod.BumpType.MINOR
+    assert (
+        mod.parse_bump_from_commit_titles(
+            [
+                "feat: add X [minor]",
+                "fix: typo [patch]",
+            ]
+        )
+        == mod.BumpType.MINOR
+    )
 
-    titles3 = ["fix: bug [fix]"]
-    assert mod.parse_bump_from_commit_titles(titles3) == mod.BumpType.PATCH
+    assert (
+        mod.parse_bump_from_commit_titles(
+            [
+                "fix: bug [fix]",
+            ]
+        )
+        == mod.BumpType.PATCH
+    )
 
 
 def test_010_parse_bump_no_bump_requires_all_no_bump():
     """Only if every title includes a no-bump token do we return NO_BUMP."""
-    titles = ["chore: foo [no-bump]", "docs: bar [no_bump]"]
-    assert mod.parse_bump_from_commit_titles(titles) == mod.BumpType.NO_BUMP
+    assert (
+        mod.parse_bump_from_commit_titles(
+            [
+                "chore: foo [no-bump]",
+                "docs: bar [no_bump]",
+            ]
+        )
+        == mod.BumpType.NO_BUMP
+    )
 
-    titles_mixed = ["chore: foo [no-bump]", "feat: bar"]
-    assert mod.parse_bump_from_commit_titles(titles_mixed) is None
+    assert (
+        mod.parse_bump_from_commit_titles(
+            [
+                "chore: foo [no-bump]",
+                "feat: bar",
+            ]
+        )
+        is None
+    )
 
 
 def test_020_parse_bump_none_when_no_tokens():
     """No tokens yields None."""
-    titles = ["chore: foo", "docs: bar"]
-    assert mod.parse_bump_from_commit_titles(titles) is None
+    assert (
+        mod.parse_bump_from_commit_titles(
+            [
+                "chore: foo",
+                "docs: bar",
+            ]
+        )
+        is None
+    )
 
 
 # -----------------------------------------------------------------------------
