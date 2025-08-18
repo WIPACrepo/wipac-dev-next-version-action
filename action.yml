@@ -138,34 +138,12 @@ runs:
         
         echo "FIRST_COMMIT=$FIRST_COMMIT" >> "$GITHUB_ENV"
 
-    - name: Find changed file paths
-      if: env.IS_DONE != 'true'
-      shell: bash
-      run: |
-        # step: Find changed file paths
-        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
-
-        CHANGED_FILES=$(git diff --name-only "$FIRST_COMMIT"..HEAD)  # has newlines
-        
-        echo "Changed files:"
-        echo "<start>"
-        echo "$CHANGED_FILES"
-        echo "<end>"
-        echo
-        
-        echo "CHANGED_FILES<<EOF" >> "$GITHUB_ENV"
-        echo "$CHANGED_FILES" >> "$GITHUB_ENV"
-        echo "EOF" >> "$GITHUB_ENV"
-
-    ### NOTE: commit logs are retrieved in python script b/c newlines are a pain
-
     - name: Compute next version
       if: env.IS_DONE != 'true'
       env:
         FORCE_PATCH_IF_NO_COMMIT_TOKEN: ${{ inputs.force-patch-if-no-commit-token }}
         IGNORE_PATHS: ${{ inputs.ignore-paths }}
         FIRST_COMMIT: ${{ env.FIRST_COMMIT }}
-        CHANGED_FILES: ${{ env.CHANGED_FILES }}
         VERSION_STYLE: ${{ inputs.version-style }}
         LATEST_VERSION_TAG: ${{ env.LATEST_VERSION_TAG }}
       shell: bash
