@@ -8,7 +8,7 @@ from subprocess import CompletedProcess
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import compute_next_version as mod
+import compute_next_version as mod  # noqa: E402
 
 
 # -----------------------------------------------------------------------------
