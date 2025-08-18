@@ -170,6 +170,7 @@ def get_bumpable_commits(first_commit: str) -> list[BumpableCommit]:
             logging.info(f"Commit is disqualified: {sha=} {title=} reason='{e}'")
             continue
 
+    # log & return
     logging.info(
         f"Found {len(shas)} commits "
         f"({len(commits)} qualified, {len(shas)-len(commits)} disqualified)"
