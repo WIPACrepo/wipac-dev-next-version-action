@@ -27,25 +27,14 @@ def _mock_git_repo(records):
     `records` is a list of tuples: (title, [files]) in newest-first order.
     We fabricate deterministic SHAs from Peanuts names for fun.
     """
-    peanuts = [
-        "charliebrown",
-        "snoopy",
-        "linus",
-        "lucy",
-        "woodstock",
-        "peppermintpatty",
-        "schroeder",
-        "sally",
-        "marcie",
-        "pigpen",
-    ]
+
     shas = []
     titles = {}
     files_map = {}
 
     for i, (title, files) in enumerate(records):
-        base = (peanuts[i % len(peanuts)] + str(i)).encode("utf-8").hex()
-        sha = base[:40].ljust(40, "0")  # 40 chars
+        base = str(i).encode("utf-8").hex()
+        sha = base[:7]
         shas.append(sha)
         titles[sha] = title
         files_map[sha] = list(files or [])
@@ -56,11 +45,12 @@ def _mock_git_repo(records):
     def _runner(cmd, capture_output=False, text=False, check=False):
         assert isinstance(cmd, list), f"Command must be a list, got {cmd!r}"
 
-        if len(cmd) >= 3 and cmd[0] == "git" and cmd[1] == "rev-list":
+        if cmd[:2] == ["git", "rev-list"]:
             # ["git", "rev-list", "<range>"]
             return CompletedProcess(cmd, 0, stdout=rev_list_out, stderr="")
 
-        if len(cmd) >= 6 and cmd[:4] == ["git", "show", "-s", "--format=%s"]:
+        if cmd[:4] == ["git", "show", "-s", "--format=%s"]:
+            # ["git", "show", "-s", "--format=%s", sha]
             sha = cmd[4]
             out = titles.get(sha, "")
             if text:
@@ -70,13 +60,7 @@ def _mock_git_repo(records):
                     cmd, 0, stdout=(out + "\n").encode(), stderr=b""
                 )
 
-        if len(cmd) >= 6 and cmd[:5] == [
-            "git",
-            "diff-tree",
-            "--no-commit-id",
-            "--name-only",
-            "-r",
-        ]:
+        if cmd[:5] == ["git", "diff-tree", "--no-commit-id", "--name-only", "-r"]:
             # ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", <sha>]
             sha = cmd[5]
             paths = files_map.get(sha, [])

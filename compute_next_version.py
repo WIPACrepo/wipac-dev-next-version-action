@@ -3,9 +3,9 @@
 import dataclasses as dc
 import enum
 import fnmatch
-import json
 import logging
 import os
+import pprint
 import subprocess
 from collections import OrderedDict
 from typing import Optional
@@ -105,6 +105,7 @@ class Commit:
         self.title_lower = self.title.lower()
 
         # look for a commit bump token in the title
+        self.bump_type = None
         for bump in BUMP_TOKENS.keys():
             if _has_bump_token(bump, self.title_lower):
                 self.bump_type = bump
@@ -176,7 +177,7 @@ def get_commits_with_changes(first_commit: str) -> list[Commit]:
     )
     logging.info("<start> (qualified commits)")
     for c in commits:
-        logging.info(json.dumps(dc.asdict(c)))
+        logging.info(pprint.pformat(dc.asdict(c), indent=4))
     logging.info("<end>")
     return commits
 
