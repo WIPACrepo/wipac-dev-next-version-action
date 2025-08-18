@@ -7,6 +7,7 @@ from subprocess import CompletedProcess
 
 import pytest
 
+# Ensure the module path includes the project root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import compute_next_version as mod  # noqa: E402
 
@@ -16,115 +17,86 @@ import compute_next_version as mod  # noqa: E402
 # -----------------------------------------------------------------------------
 
 
-def _mock_git_log_run(titles: list[str]):
-    """Return a callable to patch subprocess.run for `git log` only."""
-    stdout = ("\n".join(titles)).rstrip() + ("\n" if titles else "")
+def _mock_git_repo(records):
+    """
+    Create a patchable subprocess.run that emulates a git repo for:
+      - git rev-list <range>
+      - git show -s --format=%s <sha>
+      - git diff-tree --no-commit-id --name-only -r <sha>
+
+    `records` is a list of tuples: (title, [files]) in newest-first order.
+    We fabricate deterministic SHAs from Peanuts names for fun.
+    """
+    peanuts = [
+        "charliebrown",
+        "snoopy",
+        "linus",
+        "lucy",
+        "woodstock",
+        "peppermintpatty",
+        "schroeder",
+        "sally",
+        "marcie",
+        "pigpen",
+    ]
+    shas = []
+    titles = {}
+    files_map = {}
+
+    for i, (title, files) in enumerate(records):
+        base = (peanuts[i % len(peanuts)] + str(i)).encode("utf-8").hex()
+        sha = base[:40].ljust(40, "0")  # 40 chars
+        shas.append(sha)
+        titles[sha] = title
+        files_map[sha] = list(files or [])
+
+    # rev-list returns newest-first by default here
+    rev_list_out = "\n".join(shas) + ("\n" if shas else "")
 
     def _runner(cmd, capture_output=False, text=False, check=False):
-        assert isinstance(cmd, list)
-        assert cmd[:2] == ["git", "log"], f"Unexpected command: {cmd}"
-        return CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+        assert isinstance(cmd, list), f"Command must be a list, got {cmd!r}"
+
+        if len(cmd) >= 3 and cmd[0] == "git" and cmd[1] == "rev-list":
+            # ["git", "rev-list", "<range>"]
+            return CompletedProcess(cmd, 0, stdout=rev_list_out, stderr="")
+
+        if len(cmd) >= 6 and cmd[:4] == ["git", "show", "-s", "--format=%s"]:
+            sha = cmd[4]
+            out = titles.get(sha, "")
+            if text:
+                return CompletedProcess(cmd, 0, stdout=f"{out}\n", stderr="")
+            else:
+                return CompletedProcess(
+                    cmd, 0, stdout=(out + "\n").encode(), stderr=b""
+                )
+
+        if len(cmd) >= 6 and cmd[:5] == [
+            "git",
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+        ]:
+            # ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", <sha>]
+            sha = cmd[5]
+            paths = files_map.get(sha, [])
+            out = "\n".join(paths) + ("\n" if paths else "")
+            if text:
+                return CompletedProcess(cmd, 0, stdout=out, stderr="")
+            else:
+                return CompletedProcess(cmd, 0, stdout=out.encode(), stderr=b"")
+
+        assert False, f"Unexpected command: {cmd}"
 
     return _runner
 
 
-# -----------------------------------------------------------------------------
-# parse_bump_from_commit_titles
-# -----------------------------------------------------------------------------
-
-
-def test_000_parse_bump_detects_major_minor_patch():
-    """Tokens [major], [minor], [patch]/[fix]/[bump] are detected with precedence."""
-    assert (
-        mod.parse_bump_from_commit_titles(
-            [
-                "feat: add X [minor]",
-                "fix: small bug [patch]",
-                "chore: stuff",
-                "BREAKING: api [major]",
-            ]
-        )
-        == mod.BumpType.MAJOR
+def _set_env(ignore_paths: list[str], force_patch: bool):
+    """Swap in a new EnvConfig for the module (since the real one is frozen)."""
+    mod.ENV = mod.EnvConfig(
+        IGNORE_PATHS=list(ignore_paths),
+        FORCE_PATCH_IF_NO_COMMIT_TOKEN=bool(force_patch),
     )
-
-    assert (
-        mod.parse_bump_from_commit_titles(
-            [
-                "feat: add X [minor]",
-                "fix: typo [patch]",
-            ]
-        )
-        == mod.BumpType.MINOR
-    )
-
-    assert (
-        mod.parse_bump_from_commit_titles(
-            [
-                "fix: bug [fix]",
-            ]
-        )
-        == mod.BumpType.PATCH
-    )
-
-
-def test_010_parse_bump_no_bump_requires_all_no_bump():
-    """Only if every title includes a no-bump token do we return NO_BUMP."""
-    assert (
-        mod.parse_bump_from_commit_titles(
-            [
-                "chore: foo [no-bump]",
-                "docs: bar [no_bump]",
-            ]
-        )
-        == mod.BumpType.NO_BUMP
-    )
-
-    assert (
-        mod.parse_bump_from_commit_titles(
-            [
-                "chore: foo [no-bump]",
-                "feat: bar",
-            ]
-        )
-        is None
-    )
-
-
-def test_020_parse_bump_none_when_no_tokens():
-    """No tokens yields None."""
-    assert (
-        mod.parse_bump_from_commit_titles(
-            [
-                "chore: foo",
-                "docs: bar",
-            ]
-        )
-        is None
-    )
-
-
-# -----------------------------------------------------------------------------
-# are_all_files_ignored
-# -----------------------------------------------------------------------------
-
-
-def test_100_ignored_true_with_no_changed_files():
-    """Empty change list is treated as all-ignored (allow-empty commits)."""
-    assert mod.are_all_files_ignored([], ["**/*.md"]) is True
-
-
-def test_110_ignored_false_if_any_file_not_matching_patterns():
-    """If any file doesn't match ignore patterns, function returns False."""
-    changed = ["docs/README.md", "src/app.py"]
-    patterns = ["docs/**", "*.txt"]  # src/app.py not matched
-    assert mod.are_all_files_ignored(changed, patterns) is False
-
-
-def test_120_ignored_true_if_all_files_match_some_pattern():
-    """All files matching at least one pattern -> True."""
-    changed = ["docs/README.md", "docs/usage.txt"]
-    patterns = ["docs/**", "*.txt"]
-    assert mod.are_all_files_ignored(changed, patterns) is True
 
 
 # -----------------------------------------------------------------------------
@@ -170,22 +142,26 @@ def test_230_increment_bad_tag_shape_raises():
 
 
 # -----------------------------------------------------------------------------
-# work() integration-ish (git log stub + direct args)
+# work() integration
 # -----------------------------------------------------------------------------
 
 
 def test_300_work_semver_patch_from_token(monkeypatch, capsys):
-    """End-to-end via work(): v1.2.3 with [patch] token -> 1.2.4 printed."""
+    """v1.2.3 with an explicit [patch] token -> 1.2.4 printed."""
+    _set_env(ignore_paths=[], force_patch=False)
     monkeypatch.setattr(
-        subprocess, "run", _mock_git_log_run(["fix: squashed a bug [patch]"])
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("fix: squashed a bug [patch]", ["src/a.py", "README.md"]),  # bump
+            ]
+        ),
     )
 
     mod.work(
         version_tag="1.2.3",
-        first_commit="charliebrown",
-        changed_files=["src/a.py", "README.md"],
-        ignore_path_patterns=["docs/**", "*.md"],
-        force_patch=False,
+        first_commit="abc123",
         version_style=mod.VERSION_STYLE_X_Y_Z,
     )
     out = capsys.readouterr().out.strip()
@@ -194,16 +170,21 @@ def test_300_work_semver_patch_from_token(monkeypatch, capsys):
 
 def test_310_work_no_tokens_all_files_ignored_no_output(monkeypatch, capsys):
     """No tokens + all files ignored -> no print (no bump)."""
+    _set_env(ignore_paths=["docs/**", "*.md"], force_patch=False)
     monkeypatch.setattr(
-        subprocess, "run", _mock_git_log_run(["docs: update readme", "chore: ci tweak"])
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("docs: update readme", ["docs/README.md"]),  # non bump
+                ("chore: ci tweak", ["notes.md"]),  # non-bump b/c force_patch=False
+            ]
+        ),
     )
 
     mod.work(
         version_tag="2.3.4",
-        first_commit="snoopy",
-        changed_files=["docs/README.md", "notes.txt"],
-        ignore_path_patterns=["docs/**", "*.txt"],
-        force_patch=False,
+        first_commit="abc123",
         version_style=mod.VERSION_STYLE_X_Y_Z,
     )
     out = capsys.readouterr().out.strip()
@@ -211,53 +192,66 @@ def test_310_work_no_tokens_all_files_ignored_no_output(monkeypatch, capsys):
 
 
 def test_320_work_force_patch_when_no_token_semver(monkeypatch, capsys):
-    """No tokens + not all ignored + force_patch=True -> patch bump."""
+    """No tokens + a non-ignored change + force_patch=True -> patch bump."""
+    _set_env(ignore_paths=["*.md"], force_patch=True)
     monkeypatch.setattr(
-        subprocess, "run", _mock_git_log_run(["refactor: cleanup modules"])
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("refactor: cleanup modules", ["src/core.py", "README.md"]),  # bump
+            ]
+        ),
     )
 
     mod.work(
         version_tag="0.9.9",
-        first_commit="linus",
-        changed_files=["src/core.py", "README.md"],  # src/core.py not ignored
-        ignore_path_patterns=["*.md"],
-        force_patch=True,
+        first_commit="abc123",
         version_style=mod.VERSION_STYLE_X_Y_Z,
     )
     out = capsys.readouterr().out.strip()
     assert out == "0.9.10"
 
 
-def test_330_work_majmin_patch_token_behaves_as_minor(monkeypatch, capsys):
+def test_330_work_patch_token_behaves_as_minor_in_xy(monkeypatch, capsys):
     """In X.Y mode, [patch] acts like MINOR; 1.2 -> 1.3."""
+    _set_env(ignore_paths=[], force_patch=False)
     monkeypatch.setattr(
-        subprocess, "run", _mock_git_log_run(["fix: small bug [patch]"])
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("fix: small bug [patch]", ["src/a.py"]),  # bump
+            ]
+        ),
     )
 
     mod.work(
         version_tag="1.2",
-        first_commit="peppermintpatty",
-        changed_files=["src/a.py"],
-        ignore_path_patterns=[],
-        force_patch=False,
+        first_commit="abc123",
         version_style=mod.VERSION_STYLE_X_Y,
     )
     out = capsys.readouterr().out.strip()
     assert out == "1.3"
 
 
-def test_340_work_no_bump_token_explicit(monkeypatch, capsys):
-    """All titles marked [no-bump] -> no output."""
+def test_340_work_all_commits_no_bump_explicit(monkeypatch, capsys):
+    """All titles marked [no-bump] -> no output (they are disqualified inside Commit)."""
+    _set_env(ignore_paths=[], force_patch=False)
     monkeypatch.setattr(
-        subprocess, "run", _mock_git_log_run(["chore: x [no-bump]", "docs: y [nobump]"])
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("chore: x [no-bump]", ["src/a.py"]),  # non bump
+                ("docs: y [nobump]", ["docs/README.md"]),  # non bump
+            ]
+        ),
     )
 
     mod.work(
         version_tag="3.4.5",
-        first_commit="woodstock",
-        changed_files=["src/a.py"],
-        ignore_path_patterns=[],
-        force_patch=False,
+        first_commit="abc123",
         version_style=mod.VERSION_STYLE_X_Y_Z,
     )
     out = capsys.readouterr().out.strip()
@@ -266,16 +260,94 @@ def test_340_work_no_bump_token_explicit(monkeypatch, capsys):
 
 def test_350_work_bad_tag_shape_raises(monkeypatch):
     """Bad tag for selected style should raise in increment_bump path."""
-    monkeypatch.setattr(subprocess, "run", _mock_git_log_run(["fix: z [patch]"]))
+    _set_env(ignore_paths=[], force_patch=False)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("fix: z [patch]", ["src/a.py"]),  # bump
+            ]
+        ),
+    )
+
     with pytest.raises(ValueError):
         mod.work(
             version_tag="1.2",  # invalid for X.Y.Z
-            first_commit="schroeder",
-            changed_files=["src/a.py"],
-            ignore_path_patterns=[],
-            force_patch=False,
+            first_commit="abc123",
             version_style=mod.VERSION_STYLE_X_Y_Z,
         )
+
+
+def test_360_work_no_tokens_some_ignored_some_not_force_patch_false(
+    monkeypatch, capsys
+):
+    """Tokenless changes with a non-ignored file but force_patch=False -> no bump."""
+    _set_env(ignore_paths=["docs/**"], force_patch=False)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("chore: x", ["docs/README.md"]),  # non bump
+                ("refactor: y", ["src/kite_eating_tree.py"]),  # no b/c force_patch=Fals
+            ]
+        ),
+    )
+
+    mod.work(
+        version_tag="4.5.6",
+        first_commit="abc123",
+        version_style=mod.VERSION_STYLE_X_Y_Z,
+    )
+    out = capsys.readouterr().out.strip()
+    assert out == ""
+
+
+def test_370_work_explicit_bump(monkeypatch, capsys):
+    """Test."""
+    _set_env(ignore_paths=["docs/**"], force_patch=True)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("chore: x [major]", ["docs/README.md"]),  # bump b/c explicit
+                ("refactor: y [no-bump]", ["src/kite_eating_tree.py"]),
+            ]
+        ),
+    )
+
+    mod.work(
+        version_tag="4.5.6",
+        first_commit="abc123",
+        version_style=mod.VERSION_STYLE_X_Y_Z,
+    )
+    out = capsys.readouterr().out.strip()
+    assert out == "5.0.0"
+
+
+def test_380_work_(monkeypatch, capsys):
+    """Test."""
+    _set_env(ignore_paths=["docs/**"], force_patch=True)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("chore: x", ["docs/snoopy.md"]),  # non bump
+                ("refactor: y [no-bump]", ["snoopy.py"]),  # non bump
+            ]
+        ),
+    )
+
+    mod.work(
+        version_tag="4.5.6",
+        first_commit="abc123",
+        version_style=mod.VERSION_STYLE_X_Y_Z,
+    )
+    out = capsys.readouterr().out.strip()
+    assert out == ""
 
 
 # -----------------------------------------------------------------------------
@@ -285,14 +357,20 @@ def test_350_work_bad_tag_shape_raises(monkeypatch):
 
 def test_400_main_reads_env_and_strips_v(monkeypatch, capsys):
     """main() should parse env, lower().lstrip('v'), and print bumped version."""
-    monkeypatch.setattr(subprocess, "run", _mock_git_log_run(["fix: z [patch]"]))
+    _set_env(ignore_paths=[], force_patch=False)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("fix: z [patch]", ["src/x.py"]),
+            ]
+        ),
+    )
 
     env = {
         "LATEST_VERSION_TAG": "V1.2.3",  # covered by lower().lstrip("v") -> "1.2.3"
-        "FIRST_COMMIT": "lucy",
-        "CHANGED_FILES": "src/x.py\n",
-        "IGNORE_PATHS": "",
-        "FORCE_PATCH_IF_NO_COMMIT_TOKEN": "false",
+        "FIRST_COMMIT": "abc123",
         "VERSION_STYLE": mod.VERSION_STYLE_X_Y_Z,
     }
     for k, v in env.items():

@@ -3,6 +3,7 @@
 import dataclasses as dc
 import enum
 import fnmatch
+import json
 import logging
 import os
 import subprocess
@@ -111,7 +112,7 @@ class Commit:
         if not self.bump_type:
             # only changed ignored files?
             if are_all_files_ignored(self.changed_files):
-                raise DisqualifiedCommit()
+                raise DisqualifiedCommit("only changed ignored files")
             # so, it changed non-ignored files...
             elif ENV.FORCE_PATCH_IF_NO_COMMIT_TOKEN:
                 self.bump_type = BumpType.PATCH
@@ -119,52 +120,63 @@ class Commit:
                 self.bump_type = None
 
         if self.bump_type == BumpType.NO_BUMP:
-            raise DisqualifiedCommit()
+            raise DisqualifiedCommit("explicitly has 'no-bump' commit title")
 
 
 def get_commits_with_changes(first_commit: str) -> list[Commit]:
     """Return a list of Commit objects for commits in FIRST..HEAD.
 
-    We use a record separator between commits and a unit separator between sha/title.
+    Strategy (no control-char separators):
+      1) List SHAs in the range.
+      2) For each SHA:
+         - title:   `git show -s --format=%s <sha>`
+         - files:   `git diff-tree --no-commit-id --name-only -r <sha>`
     """
-    # --pretty uses:
-    #   %H = commit sha
-    #   %s = subject (title)
-    #   %x1f = unit separator (between sha and title)
-    #   %x1e = record separator (between commits)
-    result = subprocess.run(
-        [
-            "git",
-            "log",
-            f"{first_commit}..HEAD",
-            "--pretty=format:%H%x1f%s%x1e",
-            "--name-only",
-        ],
+
+    # 1) SHAs in FIRST..HEAD (newest first to match your prior behavior)
+    rev_list = subprocess.run(
+        ["git", "rev-list", f"{first_commit}..HEAD"],
         capture_output=True,
         text=True,
         check=True,
     )
-    blob = result.stdout
+    shas = [ln.strip() for ln in rev_list.stdout.splitlines() if ln.strip()]
     commits: list[Commit] = []
-    for rec in blob.split("\x1e"):
-        rec = rec.strip()
-        if not rec:
-            continue
-        header, *rest = rec.split("\n", 1)
-        sha, title = header.split("\x1f", 1)
-        files = []
-        if rest:
-            files = [ln.strip() for ln in rest[0].splitlines() if ln.strip()]
+
+    for sha in shas:
+
+        # 2a) title (subject line only)
+        show_title = subprocess.run(
+            ["git", "show", "-s", "--format=%s", sha],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        title = show_title.stdout.strip()
+
+        # 2b) files changed in that commit
+        diff_tree = subprocess.run(
+            ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", sha],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        files = [ln.strip() for ln in diff_tree.stdout.splitlines() if ln.strip()]
 
         try:
-            commits.append(Commit(sha=sha, title=title.strip(), changed_files=files))
-        except DisqualifiedCommit:
-            pass
+            commits.append(Commit(sha=sha, title=title, changed_files=files))
+        except DisqualifiedCommit as e:
+            # Skip commits that intentionally have no effect on versioning
+            logging.info(f"Commit is disqualified: {sha=} {title=} reason='{e}'")
+            continue
 
-    logging.info(f"Found {len(commits)} commits")
-    logging.info("<start>")
+    logging.info(
+        f"Found {len(shas)} commits "
+        f"({len(commits)} qualified, {len(shas)-len(commits)} disqualified)"
+    )
+    logging.info("<start> (qualified commits)")
     for c in commits:
-        logging.info(c.title)
+        logging.info(json.dumps(dc.asdict(c)))
     logging.info("<end>")
     return commits
 
