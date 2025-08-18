@@ -272,17 +272,17 @@ def work(
 
     # Pull commits which warrant bumping
     commits = get_bumpable_commits(first_commit)
+    if not commits:
+        return logging.info("Commit log(s) don't signify a version bump.")
 
     # Decide bump
-    max_bump = None
-    for b in BUMP_TOKENS:
-        if b in [c.bump_type for c in commits]:
-            max_bump = b
+    max_bump = max(
+        [c.bump_type for c in commits],
+        key=lambda x: -1 * list(BUMP_TOKENS.keys()).index(x),  # -1 makes it a max
+    )
     # -- no bumping needed?
     if max_bump == BumpType.NO_BUMP:
         raise RuntimeError("detected [no-bump] after commit filtering")
-    elif not max_bump:
-        return logging.info("Commit log(s) don't signify a version bump.")
 
     # Increment bump
     next_version = increment_bump(version_tag, max_bump, version_style)
