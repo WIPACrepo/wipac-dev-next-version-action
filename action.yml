@@ -11,6 +11,16 @@ inputs:
     description: Newline-delimited list of file/directory globs to ignore when checking changed files
     required: false
     default: ""
+  version-style:
+    description: |
+      Your project's style of versioning. 
+      Example: 'X.Y.Z' (default), 'X.Y' (no patch segment)
+    type: choice
+    options:
+      - 'X.Y.Z'
+      - 'X.Y'
+    required: false
+    default: 'X.Y.Z'
 
 outputs:
   version:
@@ -35,50 +45,79 @@ runs:
     - name: Get the latest version tag
       if: env.IS_DONE != 'true'
       shell: bash
+      env:
+        VERSION_STYLE: ${{ inputs.version-style }}
       run: |
         # step: Get the latest version tag
         set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
-        _latest_semver_tag=$(git tag --sort=-creatordate | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
-        echo "Latest semantic-version style tag: $_latest_semver_tag"
-        echo "LATEST_SEMVER_TAG=$_latest_semver_tag" >> "$GITHUB_ENV"
-        if [ -n "$_latest_semver_tag" ]; then
-          echo "LATEST_SEMVER_TAG_NO_V=${_latest_semver_tag#v}" >> "$GITHUB_ENV"
-        fi
+        git fetch --tags &> /dev/null
+
+        case "${VERSION_STYLE}" in
+          'X.Y.Z')
+            _re='^v?[0-9]+\.[0-9]+\.[0-9]+$'
+            ;;
+          'X.Y')
+            _re='^v?[0-9]+\.[0-9]+$'
+            ;;
+          *)
+            echo "::error::Unsupported version-style: ${VERSION_STYLE}"
+            exit 1
+            ;;
+        esac
+
+        #
+        # Use for-each-ref for robust tag listing/sorting
+        #
+        _latest_version_tag=$(
+          git for-each-ref --sort=-creatordate --format='%(refname:strip=2)' refs/tags |
+          grep -E "${_re}" | head -n1 || true
+        )
+        echo "Latest tag (style ${VERSION_STYLE}): ${_latest_version_tag:-}"
+
+        # Explicitly export (even if empty)
+        echo "LATEST_VERSION_TAG=${_latest_version_tag:-}" >> "$GITHUB_ENV"
 
     - name: Handle no previous tag (first release case)
-      if: env.IS_DONE != 'true' && env.LATEST_SEMVER_TAG == ''
+      if: env.IS_DONE != 'true' && env.LATEST_VERSION_TAG == ''
       shell: bash
+      env:
+        VERSION_STYLE: ${{ inputs.version-style }}
       run: |
         # step: Handle no previous tag (first release case)
         set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
-        echo "No previous semver tag found — using 0.0.0."
-        echo "VERSION=0.0.0" >> "$GITHUB_ENV"
+        case "${VERSION_STYLE}" in
+          'X.Y.Z') seed="0.0.0" ;;
+          'X.Y')   seed="0.0"   ;;
+          *) echo "::error::Unsupported version-style: ${VERSION_STYLE}"; exit 1 ;;
+        esac
+
+        echo "No previous tag found for style ${VERSION_STYLE} — using ${seed}."
+        echo "VERSION=${seed}" >> "$GITHUB_ENV"
         echo "IS_DONE=true" >> "$GITHUB_ENV"
 
-    - name: Validate latest tag commit ancestry
+    - name: Validate latest version-tag commit ancestry
       if: env.IS_DONE != 'true'
       shell: bash
       run: |
-        # step: Validate latest tag commit ancestry
+        # step: Validate latest version-tag commit ancestry
         set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
-        _latest_tag_sha=$(git rev-parse "$LATEST_SEMVER_TAG")
-        echo "Latest tag SHA: $_latest_tag_sha"
-        echo "LATEST_TAG_SHA=$_latest_tag_sha" >> "$GITHUB_ENV"
+        _latest_ver_tag_sha=$(git rev-parse "$LATEST_VERSION_TAG")
+        echo "Latest version-tag SHA: $_latest_ver_tag_sha"
 
         # Case 1: does this tag already point to $GITHUB_SHA?
-        if [[ "$_latest_tag_sha" == "$GITHUB_SHA" ]]; then
-          echo "::warning::This commit ($GITHUB_SHA) is already tagged ($LATEST_SEMVER_TAG) — no bump needed."
+        if [[ "$_latest_ver_tag_sha" == "$GITHUB_SHA" ]]; then
+          echo "::warning::This commit ($GITHUB_SHA) is already tagged ($LATEST_VERSION_TAG) — no bump needed."
           echo "VERSION=" >> "$GITHUB_ENV"
           echo "IS_DONE=true" >> "$GITHUB_ENV"
           exit 0
         fi
 
         # Case 2: is the tag older (and in same linear history) as $GITHUB_SHA?
-        if ! git merge-base --is-ancestor "$_latest_tag_sha" "$GITHUB_SHA"; then
-          echo "::warning::The latest tag ($LATEST_SEMVER_TAG -> $_latest_tag_sha) is not an ancestor of this commit ($GITHUB_SHA)."
+        if ! git merge-base --is-ancestor "$_latest_ver_tag_sha" "$GITHUB_SHA"; then
+          echo "::warning::The latest version tag ($LATEST_VERSION_TAG -> $_latest_ver_tag_sha) is not an ancestor of this commit ($GITHUB_SHA)."
           echo "::warning::This suggests the tag may be from a newer commit — cannot bump version."
           echo "VERSION=" >> "$GITHUB_ENV"
           echo "IS_DONE=true" >> "$GITHUB_ENV"
@@ -92,33 +131,12 @@ runs:
         # step: Find first commit since latest version tag
         set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
 
-        FIRST_COMMIT=$(git rev-list -n 1 "$LATEST_SEMVER_TAG")
+        FIRST_COMMIT=$(git rev-list -n 1 "$LATEST_VERSION_TAG")
         
-        echo "Looking at what's changed since $LATEST_SEMVER_TAG / $FIRST_COMMIT..."
+        echo "Looking at what's changed since $LATEST_VERSION_TAG / $FIRST_COMMIT..."
         echo
         
         echo "FIRST_COMMIT=$FIRST_COMMIT" >> "$GITHUB_ENV"
-
-    - name: Find changed file paths
-      if: env.IS_DONE != 'true'
-      shell: bash
-      run: |
-        # step: Find changed file paths
-        set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
-
-        CHANGED_FILES=$(git diff --name-only "$FIRST_COMMIT"..HEAD)  # has newlines
-        
-        echo "Changed files:"
-        echo "<start>"
-        echo "$CHANGED_FILES"
-        echo "<end>"
-        echo
-        
-        echo "CHANGED_FILES<<EOF" >> "$GITHUB_ENV"
-        echo "$CHANGED_FILES" >> "$GITHUB_ENV"
-        echo "EOF" >> "$GITHUB_ENV"
-
-    ### NOTE: commit logs are retrieved in python script b/c newlines are a pain
 
     - name: Compute next version
       if: env.IS_DONE != 'true'
@@ -126,11 +144,14 @@ runs:
         FORCE_PATCH_IF_NO_COMMIT_TOKEN: ${{ inputs.force-patch-if-no-commit-token }}
         IGNORE_PATHS: ${{ inputs.ignore-paths }}
         FIRST_COMMIT: ${{ env.FIRST_COMMIT }}
-        CHANGED_FILES: ${{ env.CHANGED_FILES }}
+        VERSION_STYLE: ${{ inputs.version-style }}
+        LATEST_VERSION_TAG: ${{ env.LATEST_VERSION_TAG }}
       shell: bash
       run: |
         # step: Compute next version
         set -euo pipefail; echo "now: $(date -u +"%Y-%m-%dT%H:%M:%S.%3N")"
+
+        pip install -r ${{ github.action_path }}/requirements.txt
 
         VERSION=$(python ${{ github.action_path }}/compute_next_version.py)
         echo "Computed version: $VERSION"
