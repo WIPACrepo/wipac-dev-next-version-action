@@ -161,7 +161,7 @@ def test_310_work_no_tokens_all_files_ignored_no_output(monkeypatch, capsys):
         _mock_git_repo(
             [
                 ("docs: update readme", ["docs/README.md"]),  # non bump
-                ("chore: ci tweak", ["notes.md"]),  # non-bump b/c force_patch=False
+                ("chore: ci tweak", ["notes.md"]),  # non bump
             ]
         ),
     )
@@ -332,6 +332,28 @@ def test_380_work_(monkeypatch, capsys):
     )
     out = capsys.readouterr().out.strip()
     assert out == ""
+
+
+def test_390_work_(monkeypatch, capsys):
+    """Test."""
+    _set_env(ignore_paths=["docs/**"], force_patch=True)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                ("chore: x [minor]", []),  # bump
+            ]
+        ),
+    )
+
+    mod.work(
+        version_tag="4.5.6",
+        first_commit="abc123",
+        version_style=mod.VERSION_STYLE_X_Y_Z,
+    )
+    out = capsys.readouterr().out.strip()
+    assert out == "4.6.0"
 
 
 # -----------------------------------------------------------------------------

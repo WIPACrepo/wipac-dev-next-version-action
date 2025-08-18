@@ -8,7 +8,6 @@ import os
 import pprint
 import subprocess
 from collections import OrderedDict
-from typing import Optional
 
 from wipac_dev_tools import from_environment_as_dataclass
 
@@ -89,8 +88,8 @@ class DisqualifiedCommit(RuntimeError):
 
 
 @dc.dataclass
-class Commit:
-    """Useful things to know about a commit."""
+class BumpableCommit:
+    """Useful things to know about a commit which qualifies as bumpable."""
 
     sha: str
     title: str  # original title (preserved for logs)
@@ -98,34 +97,41 @@ class Commit:
 
     # derived
     title_lower: str = dc.field(init=False)
-    bump_type: Optional[BumpType] = dc.field(init=False)
+    bump_type: BumpType = dc.field(init=False)
 
     def __post_init__(self):
         # keep 'title' for logs, derive a lowercased view for token matching
         self.title_lower = self.title.lower()
 
+        self.bump_type = self._figure_bump_type(self.title_lower, self.changed_files)
+
+    @staticmethod
+    def _figure_bump_type(title_lower: str, changed_files: list[str]) -> BumpType:
+
         # look for a commit bump token in the title
-        self.bump_type = None
         for bump in BUMP_TOKENS.keys():
-            if _has_bump_token(bump, self.title_lower):
-                self.bump_type = bump
+            if _has_bump_token(bump, title_lower):
+                if bump == BumpType.NO_BUMP:
+                    raise DisqualifiedCommit("explicitly has 'no-bump' commit title")
+                else:
+                    return bump
+
         # so, commit title did not have a token...
-        if not self.bump_type:
-            # only changed ignored files?
-            if are_all_files_ignored(self.changed_files):
-                raise DisqualifiedCommit("only changed ignored files")
-            # so, it changed non-ignored files...
-            elif ENV.FORCE_PATCH_IF_NO_COMMIT_TOKEN:
-                self.bump_type = BumpType.PATCH
-            else:
-                self.bump_type = None
 
-        if self.bump_type == BumpType.NO_BUMP:
-            raise DisqualifiedCommit("explicitly has 'no-bump' commit title")
+        # only changed ignored files?
+        if are_all_files_ignored(changed_files):
+            raise DisqualifiedCommit("only changed ignored files")
+        # so, it changed non-ignored files...
+        elif ENV.FORCE_PATCH_IF_NO_COMMIT_TOKEN:
+            return BumpType.PATCH
+        else:
+            raise DisqualifiedCommit(
+                "did not contain a bump token (force-patching is off)"
+            )
 
 
-def get_commits_with_changes(first_commit: str) -> list[Commit]:
-    """Return a list of Commit objects for commits in FIRST..HEAD.
+def get_bumpable_commits(first_commit: str) -> list[BumpableCommit]:
+    """Return a list of Commit objects for commits in FIRST..HEAD which warrant bumping.
 
     Strategy (no control-char separators):
       1) List SHAs in the range.
@@ -142,7 +148,7 @@ def get_commits_with_changes(first_commit: str) -> list[Commit]:
         check=True,
     )
     shas = [ln.strip() for ln in rev_list.stdout.splitlines() if ln.strip()]
-    commits: list[Commit] = []
+    commits: list[BumpableCommit] = []
 
     for sha in shas:
 
@@ -165,7 +171,7 @@ def get_commits_with_changes(first_commit: str) -> list[Commit]:
         files = [ln.strip() for ln in diff_tree.stdout.splitlines() if ln.strip()]
 
         try:
-            commits.append(Commit(sha=sha, title=title, changed_files=files))
+            commits.append(BumpableCommit(sha=sha, title=title, changed_files=files))
         except DisqualifiedCommit as e:
             # Skip commits that intentionally have no effect on versioning
             logging.info(f"Commit is disqualified: {sha=} {title=} reason='{e}'")
@@ -264,22 +270,21 @@ def work(
     logging.info(f"{first_commit=}")
     logging.info(f"{version_style=}")
 
-    # Pull commits with their own changed files
-    commits = get_commits_with_changes(first_commit)
+    # Pull commits which warrant bumping
+    commits = get_bumpable_commits(first_commit)
 
     # Decide bump
     max_bump = None
     for b in BUMP_TOKENS:
         if b in [c.bump_type for c in commits]:
             max_bump = b
-
-    # no bumping needed?
+    # -- no bumping needed?
     if max_bump == BumpType.NO_BUMP:
-        return logging.info("Commit set signifies no version bump.")
+        raise RuntimeError("detected [no-bump] after commit filtering")
     elif not max_bump:
         return logging.info("Commit log(s) don't signify a version bump.")
 
-    # increment bump
+    # Increment bump
     next_version = increment_bump(version_tag, max_bump, version_style)
     print(next_version)
 
