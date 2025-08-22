@@ -27,6 +27,14 @@ class EnvConfig:
     IGNORE_PATHS: list[str] = dc.field(default_factory=list)
     FORCE_PATCH_IF_NO_COMMIT_TOKEN: bool = False
 
+    def __post_init__(self):
+        # normalize IGNORE_PATHS: drop blanks, strip whitespace
+        object.__setattr__(
+            self,
+            "IGNORE_PATHS",
+            [ln.strip() for ln in self.IGNORE_PATHS if ln.strip()],
+        )
+
 
 ENV = from_environment_as_dataclass(EnvConfig)
 
@@ -65,21 +73,32 @@ def _has_bump_token(bump: BumpType, string: str) -> bool:
 
 
 def are_all_files_ignored(changed_files: list[str]) -> bool:
-    """Do all the changed files match the patterns (aggregate)?"""
+    """Return True if every changed file is ignored."""
     if not changed_files:
-        return True  # think: git commit --allow-empty -m "Trigger CI pipeline"
+        return True  # think: git commit --allow-empty -m "Trigger CI pipeline [bump]"
+
+    ignores = [p for p in ENV.IGNORE_PATHS if not p.startswith("!")]
+    unignores = [p.removeprefix("!") for p in ENV.IGNORE_PATHS if p.startswith("!")]
 
     for f in changed_files:
         logging.debug(f"Checking if this changed file is ignored: {f}")
-        matched = False
-        for pat in ENV.IGNORE_PATHS:
-            if fnmatch.fnmatch(f, pat):
-                logging.debug(f"-> COVERED BY IGNORE-PATTERN: {pat}")
-                matched = True
-                break
-        if not matched:
+
+        # Negations win regardless of order
+        if any(fnmatch.fnmatch(f, pat) for pat in unignores):
+            logging.debug(f'-> UNIGNORED by negation glob {["!"+p for p in unignores]}')
+            return False  # found a changed file that is NOT ignored
+
+        # Otherwise, ignored if any positive pattern matches
+        elif any(fnmatch.fnmatch(f, pat) for pat in ignores):
+            logging.debug(f"-> IGNORED by glob {ignores=}")
+            continue  # this file is ignored; check next
+
+        # No matches at all => not ignored
+        else:
             logging.info(f"Found a changed non-ignored file: {f}")
             return False
+
+    # All files were ignored
     return True
 
 
