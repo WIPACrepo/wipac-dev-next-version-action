@@ -19,7 +19,7 @@ This action is designed for CI/CD workflows that automatically publish new relea
     - `[major]`
     - `[minor]`
     - `[patch]`, `[fix]`, or `[bump]`
-    - `[no-bump]`
+    - `[no-bump]`, `[nobump]`, or `<bot>` — which conversely cause no version bump
 4. If there weren't any "bump strings"
     - checks if the changed files are all ignorable (see [`ignore-paths`](#inputs)), or
     - whether to make a patch bump anyways (see [`force-patch-if-no-commit-token`](#inputs))

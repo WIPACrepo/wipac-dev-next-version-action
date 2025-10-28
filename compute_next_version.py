@@ -62,7 +62,7 @@ BUMP_TOKENS = OrderedDict(  # ordered by precedence
         BumpType.MAJOR: ["[major]"],
         BumpType.MINOR: ["[minor]"],
         BumpType.PATCH: ["[patch]", "[fix]", "[bump]"],
-        BumpType.NO_BUMP: ["[no-bump]", "[no_bump]", "[nobump]"],
+        BumpType.NO_BUMP: ["[no-bump]", "[no_bump]", "[nobump]", "<bot>"],
     }
 )
 

@@ -227,8 +227,10 @@ def test_340_work_all_commits_no_bump_explicit(monkeypatch, capsys):
         "run",
         _mock_git_repo(
             [
-                ("chore: x [no-bump]", ["src/a.py"]),  # non bump
-                ("docs: y [nobump]", ["docs/README.md"]),  # non bump
+                ("x [no-bump]", ["src/a.py"]),  # non bump
+                ("y [nobump]", ["src/a.py"]),  # non bump
+                ("<bot> z1", ["src/a.py"]),  # non bump
+                ("z2 <bot>", ["src/a.py"]),  # non bump
             ]
         ),
     )
