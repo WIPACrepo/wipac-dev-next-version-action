@@ -36,6 +36,13 @@ class EnvConfig:
             "IGNORE_PATHS",
             [ln.strip() for ln in self.IGNORE_PATHS if ln.strip()],
         )
+        for pat in self.IGNORE_PATHS:
+            if pat.endswith("/"):
+                raise RuntimeError(
+                    "ignore-paths cannot end with '/' — to define a directory's contents use 'foo/**' "
+                    "(Due to a discrepancy between '.gitignore'-style semantics and "
+                    "the 'pathspec' package, this is the simplest solution.)"
+                )
 
         object.__setattr__(
             self,
