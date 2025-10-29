@@ -27,6 +27,7 @@ class EnvConfig:
 
     IGNORE_PATHS: list[str] = dc.field(default_factory=list)
     FORCE_PATCH_IF_NO_COMMIT_TOKEN: bool = False
+    GITIGNOREISH_SPEC: pathspec.GitIgnoreSpec = dc.field(init=False)
 
     def __post_init__(self):
         # normalize IGNORE_PATHS: drop blanks, strip whitespace
@@ -36,9 +37,14 @@ class EnvConfig:
             [ln.strip() for ln in self.IGNORE_PATHS if ln.strip()],
         )
 
+        object.__setattr__(
+            self,
+            "GITIGNOREISH_SPEC",
+            pathspec.GitIgnoreSpec.from_lines(self.IGNORE_PATHS),
+        )
+
 
 ENV = from_environment_as_dataclass(EnvConfig)
-GITIGNORE_ISH_SPEC = pathspec.GitIgnoreSpec.from_lines(ENV.IGNORE_PATHS)
 
 
 # version styles -- could be a StrEnum but that is py 3.11+
@@ -86,7 +92,8 @@ def are_all_files_ignored(changed_files: list[str]) -> bool:
 
     for f in changed_files:
         f = _norm(f)
-        ignored = GITIGNORE_ISH_SPEC.match_file(f)  # is path ignored by gitignore logic
+        # is the path ignored by gitignore logic?
+        ignored = ENV.GITIGNOREISH_SPEC.match_file(f)
         if not ignored:
             logging.info(f"Found a changed non-ignored file: {f}")
             return False
