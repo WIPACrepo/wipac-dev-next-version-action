@@ -92,8 +92,8 @@ def test_000_workflows_ignore_except_one():
     """Ignore .github/workflows/** but not image-publish.yml (pathspec behavior)."""
     _set_env(
         ignore_paths=[
-            "/.github/workflows/**",
-            "!/.github/workflows/image-publish.yml",
+            ".github/workflows/**",
+            "!.github/workflows/image-publish.yml",
         ],
         force_patch=False,
     )
@@ -170,7 +170,7 @@ def test_050_directory_tree_pattern_any_depth():
     """A directory tree pattern matches at any depth when not anchored with '/'."""
     _set_env(
         ignore_paths=[
-            "vendor/**",  # any 'vendor' subtree at any depth
+            "**/vendor/**",  # any 'vendor' subtree at any depth
         ],
         force_patch=False,
     )
@@ -511,8 +511,8 @@ def test_398_work_workflows_ignore_except_one_affects_bump(monkeypatch, capsys):
     """Touching the allowed workflow file triggers a bump when force_patch=True."""
     _set_env(
         ignore_paths=[
-            "/.github/workflows/**",
-            "!/.github/workflows/image-publish.yml",
+            ".github/workflows/**",
+            "!.github/workflows/image-publish.yml",
         ],
         force_patch=True,  # allow bump when a non-ignored file changes without tokens
     )
