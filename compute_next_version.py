@@ -2,13 +2,14 @@
 
 import dataclasses as dc
 import enum
-import fnmatch
 import logging
 import os
 import pprint
 import subprocess
 from collections import OrderedDict
+from pathlib import PurePosixPath
 
+import pathspec
 from wipac_dev_tools import from_environment_as_dataclass
 
 
@@ -37,6 +38,8 @@ class EnvConfig:
 
 
 ENV = from_environment_as_dataclass(EnvConfig)
+GITIGNORE_ISH_SPEC = pathspec.GitIgnoreSpec.from_lines(ENV.IGNORE_PATHS)
+
 
 # version styles -- could be a StrEnum but that is py 3.11+
 VERSION_STYLE_X_Y_Z = "X.Y.Z"  # ex: 1.12.3
@@ -73,32 +76,20 @@ def _has_bump_token(bump: BumpType, string: str) -> bool:
 
 
 def are_all_files_ignored(changed_files: list[str]) -> bool:
-    """Return True if every changed file is ignored."""
+    """Return True if every changed file is ignored (gitignore semantics)."""
     if not changed_files:
-        return True  # think: git commit --allow-empty -m "Trigger CI pipeline [bump]"
+        return True
 
-    ignores = [p for p in ENV.IGNORE_PATHS if not p.startswith("!")]
-    unignores = [p.removeprefix("!") for p in ENV.IGNORE_PATHS if p.startswith("!")]
+    def _norm(p: str) -> str:
+        # strip leading './' and normalize to POSIX separators
+        return str(PurePosixPath(p.lstrip("./")))
 
     for f in changed_files:
-        logging.debug(f"Checking if this changed file is ignored: {f}")
-
-        # Negations win regardless of order
-        if any(fnmatch.fnmatch(f, pat) for pat in unignores):
-            logging.debug(f'-> UNIGNORED by negation glob {["!"+p for p in unignores]}')
-            return False  # found a changed file that is NOT ignored
-
-        # Otherwise, ignored if any positive pattern matches
-        elif any(fnmatch.fnmatch(f, pat) for pat in ignores):
-            logging.debug(f"-> IGNORED by glob {ignores=}")
-            continue  # this file is ignored; check next
-
-        # No matches at all => not ignored
-        else:
+        f = _norm(f)
+        ignored = GITIGNORE_ISH_SPEC.match_file(f)  # is path ignored by gitignore logic
+        if not ignored:
             logging.info(f"Found a changed non-ignored file: {f}")
             return False
-
-    # All files were ignored
     return True
 
 
