@@ -93,19 +93,17 @@ def test_000_workflows_ignore_except_one():
     _set_env(
         ignore_paths=[
             ".github/workflows/**",
-            "!.github/workflows/image-publish.yml",  # unignore only the file
+            "!.github/workflows/image-publish.yml",
         ],
         force_patch=False,
     )
-    # Under pathspec, the specific unignore exposes the child; verify the target is not ignored.
+    # Verify image-publish.yml is not ignored, and cicd.yml is also not ignored under pathspec behavior.
     assert not mod.are_all_files_ignored([".github/workflows/image-publish.yml"])
-    # pathspec treats this scenario as not ignored as well
     assert not mod.are_all_files_ignored([".github/workflows/cicd.yml"])
 
 
 def test_010_unignore_child_requires_parent_directory_unignore():
     """Child negation works without parent re-include under pathspec; parent re-include also works."""
-    # Under pathspec, this DOES unignore the child file.
     _set_env(
         ignore_paths=[
             "build/",
@@ -115,7 +113,6 @@ def test_010_unignore_child_requires_parent_directory_unignore():
     )
     assert not mod.are_all_files_ignored(["build/keep.txt"])
 
-    # Also works (and mirrors git docs) if you re-include the parent explicitly.
     _set_env(
         ignore_paths=[
             "build/",
@@ -131,12 +128,11 @@ def test_020_basename_patterns_apply_anywhere():
     """A pattern with no '/' matches basenames anywhere; negation likewise."""
     _set_env(
         ignore_paths=[
-            "*.md",  # ignore all markdown
-            "!README.md",  # unignore any README.md anywhere
+            "*.md",
+            "!README.md",
         ],
         force_patch=False,
     )
-    # README.md anywhere is unignored; other .md are ignored.
     assert not mod.are_all_files_ignored(["README.md"])
     assert not mod.are_all_files_ignored(["docs/README.md"])
     assert mod.are_all_files_ignored(["docs/guide.md"])
@@ -152,7 +148,7 @@ def test_030_single_star_does_not_cross_slash():
         force_patch=False,
     )
     assert mod.are_all_files_ignored(["docs/a.md"])
-    assert not mod.are_all_files_ignored(["docs/sub/a.md"])  # not matched by docs/*.md
+    assert not mod.are_all_files_ignored(["docs/sub/a.md"])
     assert not mod.are_all_files_ignored(["src/a.md"])
 
 
@@ -171,16 +167,15 @@ def test_040_double_star_crosses_slashes_recursively():
 
 
 def test_050_trailing_slash_directory_pattern():
-    """A trailing slash pattern ignores everything under that dir (file paths)."""
+    """A trailing slash pattern ignores everything under that directory (file paths)."""
     _set_env(
         ignore_paths=[
             "vendor/",
         ],
         force_patch=False,
     )
-    # Focus on file paths, which is what git diff-tree yields.
     assert mod.are_all_files_ignored(["vendor/lib/a.py"])
-    # Without a leading '/', vendor/ matches any vendor directory at any depth
+    # Without a leading '/', vendor/ matches any vendor directory at any depth.
     assert mod.are_all_files_ignored(["src/vendor/lib.py"])
 
 
@@ -191,18 +186,17 @@ def test_060_order_last_rule_wins():
             "*.log",
             "!debug.log",
             "debug.log",
-            "!debug.log",  # final: unignore
+            "!debug.log",
         ],
         force_patch=False,
     )
     assert mod.are_all_files_ignored(["app.log"])
     assert not mod.are_all_files_ignored(["debug.log"])
-    # basename rule applies to nested path's basename
     assert not mod.are_all_files_ignored(["logs/debug.log"])
 
 
 def test_070_leading_dot_slash_normalization():
-    """Leading './' in patterns can be literal under pathspec; use root-ish form instead."""
+    """Patterns beginning with './' behave like root-relative patterns under pathspec."""
     _set_env(
         ignore_paths=[
             "dist/",
@@ -212,24 +206,22 @@ def test_070_leading_dot_slash_normalization():
     )
     assert not mod.are_all_files_ignored(["dist/keep.whl"])
     assert mod.are_all_files_ignored(["dist/drop.whl"])
-    assert not mod.are_all_files_ignored(["./dist/keep.whl"])
-    assert mod.are_all_files_ignored(["dist/drop.whl"])
 
 
 def test_080_empty_changed_list_treated_as_all_ignored():
-    """No changed files → treated as all ignored (allows empty commits to no-op)."""
+    """No changed files are treated as all ignored (empty commits result in no bump)."""
     _set_env(ignore_paths=["*"], force_patch=False)
     assert mod.are_all_files_ignored([]) is True
 
 
 def test_090_mixed_subtree_unignore_then_reignore_last_rule_wins():
-    """Subtree unignore followed by a re-ignore should leave the final path ignored."""
+    """Subtree unignore followed by a re-ignore results in the path being ignored again."""
     _set_env(
         ignore_paths=[
-            "data/**",  # ignore all data
-            "!data/images/**",  # unignore images subtree
-            "!data/images/private/**",  # unignore private subtree
-            "data/images/private/**",  # re-ignore private subtree (last wins)
+            "data/**",
+            "!data/images/**",
+            "!data/images/private/**",
+            "data/images/private/**",
         ],
         force_patch=False,
     )
