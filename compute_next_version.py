@@ -7,7 +7,6 @@ import os
 import pprint
 import subprocess
 from collections import OrderedDict
-from pathlib import PurePosixPath
 
 import pathspec
 from wipac_dev_tools import from_environment_as_dataclass
@@ -37,8 +36,9 @@ class EnvConfig:
             [ln.strip() for ln in self.IGNORE_PATHS if ln.strip()],
         )
         for pat in self.IGNORE_PATHS:
-            if pat.startswith("/"):
-                raise ValueError(f"ignore-path cannot start with '/' ({pat})")
+            for no in ["/", "./", "../"]:
+                if pat.startswith(no):
+                    raise ValueError(f"ignore-path cannot start with '{no}' ({pat})")
             if pat.endswith("/"):
                 raise ValueError(
                     f"ignore-path cannot end with '/' ({pat}) — "
@@ -97,12 +97,7 @@ def are_all_files_ignored(changed_files: list[str]) -> bool:
     if not changed_files:
         return True
 
-    def _norm(p: str) -> str:
-        # strip leading './' and normalize to POSIX separators
-        return str(PurePosixPath(p.lstrip("./")))
-
     for f in changed_files:
-        f = _norm(f)
         # is the path ignored by gitignore logic?
         ignored = ENV.GITIGNOREISH_SPEC.match_file(f)
         if not ignored:
