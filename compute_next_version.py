@@ -37,8 +37,10 @@ class EnvConfig:
             [ln.strip() for ln in self.IGNORE_PATHS if ln.strip()],
         )
         for pat in self.IGNORE_PATHS:
+            if pat.startswith("/"):
+                raise ValueError(f"ignore-path cannot start with '/' ({pat})")
             if pat.endswith("/"):
-                raise RuntimeError(
+                raise ValueError(
                     f"ignore-path cannot end with '/' ({pat}) — "
                     "to define a directory's contents use "
                     "'foo/**', 'foo/*', or (for a specific file) 'foo/file'. "
