@@ -29,10 +29,10 @@ This action is designed for CI/CD workflows that automatically publish new relea
 
 ## Inputs
 
-| Name                             | Required | Default   | Description                                                                                                                               |
-|----------------------------------|----------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `force-patch-if-no-commit-token` | `false`  | `"false"` | If true, bumps a patch version even if no commit message contains a "bump string"                                                         |
-| `ignore-paths`                   | `false`  | `""`      | Newline-delimited glob patterns (e.g. `resources/**`) — if all changed files match these and there's no "bump string", no release is made |
+| Name                             | Required | Default   | Description                                                                                                                                       |
+|----------------------------------|----------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| `force-patch-if-no-commit-token` | `false`  | `"false"` | If true, bumps a patch version even if no commit message contains a "bump string"                                                                 |
+| `ignore-paths`                   | `false`  | `""`      | Newline-delimited gitignore-style patterns (e.g. `resources/**`) — if all changed files match these and there's no bump token, no release is made |
 
 ## Outputs
 

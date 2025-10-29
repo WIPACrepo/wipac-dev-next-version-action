@@ -2,13 +2,13 @@
 
 import dataclasses as dc
 import enum
-import fnmatch
 import logging
 import os
 import pprint
 import subprocess
 from collections import OrderedDict
 
+import pathspec
 from wipac_dev_tools import from_environment_as_dataclass
 
 
@@ -26,6 +26,7 @@ class EnvConfig:
 
     IGNORE_PATHS: list[str] = dc.field(default_factory=list)
     FORCE_PATCH_IF_NO_COMMIT_TOKEN: bool = False
+    GITIGNOREISH_SPEC: pathspec.GitIgnoreSpec = dc.field(init=False)
 
     def __post_init__(self):
         # normalize IGNORE_PATHS: drop blanks, strip whitespace
@@ -34,9 +35,28 @@ class EnvConfig:
             "IGNORE_PATHS",
             [ln.strip() for ln in self.IGNORE_PATHS if ln.strip()],
         )
+        for pat in self.IGNORE_PATHS:
+            for no in ["/", "./", "../"]:
+                if pat.startswith(no):
+                    raise ValueError(f"ignore-path cannot start with '{no}' ({pat})")
+            if pat.endswith("/"):
+                raise ValueError(
+                    f"ignore-path cannot end with '/' ({pat}) — "
+                    "to define a directory's contents use "
+                    "'foo/**', 'foo/*', or (for a specific file) 'foo/file'. "
+                    "This restriction is due to a discrepancy between "
+                    "'.gitignore'-style semantics and the 'pathspec' package."
+                )
+
+        object.__setattr__(
+            self,
+            "GITIGNOREISH_SPEC",
+            pathspec.GitIgnoreSpec.from_lines(self.IGNORE_PATHS),
+        )
 
 
 ENV = from_environment_as_dataclass(EnvConfig)
+
 
 # version styles -- could be a StrEnum but that is py 3.11+
 VERSION_STYLE_X_Y_Z = "X.Y.Z"  # ex: 1.12.3
@@ -73,32 +93,16 @@ def _has_bump_token(bump: BumpType, string: str) -> bool:
 
 
 def are_all_files_ignored(changed_files: list[str]) -> bool:
-    """Return True if every changed file is ignored."""
+    """Return True if every changed file is ignored (gitignore semantics)."""
     if not changed_files:
-        return True  # think: git commit --allow-empty -m "Trigger CI pipeline [bump]"
-
-    ignores = [p for p in ENV.IGNORE_PATHS if not p.startswith("!")]
-    unignores = [p.removeprefix("!") for p in ENV.IGNORE_PATHS if p.startswith("!")]
+        return True
 
     for f in changed_files:
-        logging.debug(f"Checking if this changed file is ignored: {f}")
-
-        # Negations win regardless of order
-        if any(fnmatch.fnmatch(f, pat) for pat in unignores):
-            logging.debug(f'-> UNIGNORED by negation glob {["!"+p for p in unignores]}')
-            return False  # found a changed file that is NOT ignored
-
-        # Otherwise, ignored if any positive pattern matches
-        elif any(fnmatch.fnmatch(f, pat) for pat in ignores):
-            logging.debug(f"-> IGNORED by glob {ignores=}")
-            continue  # this file is ignored; check next
-
-        # No matches at all => not ignored
-        else:
+        # is the path ignored by gitignore logic?
+        ignored = ENV.GITIGNOREISH_SPEC.match_file(f)
+        if not ignored:
             logging.info(f"Found a changed non-ignored file: {f}")
             return False
-
-    # All files were ignored
     return True
 
 

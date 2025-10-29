@@ -25,7 +25,7 @@ def _mock_git_repo(records):
       - git diff-tree --no-commit-id --name-only -r <sha>
 
     `records` is a list of tuples: (title, [files]) in newest-first order.
-    We fabricate deterministic SHAs from Peanuts names for fun.
+    We fabricate deterministic SHAs from indexes for stability.
     """
 
     shas = []
@@ -81,6 +81,152 @@ def _set_env(ignore_paths: list[str], force_patch: bool):
         IGNORE_PATHS=list(ignore_paths),
         FORCE_PATCH_IF_NO_COMMIT_TOKEN=bool(force_patch),
     )
+
+
+# -----------------------------------------------------------------------------
+# are_all_files_ignored() — gitignore-like semantics via pathspec
+# -----------------------------------------------------------------------------
+
+
+def test_000_workflows_ignore_except_one():
+    """Ignore .github/workflows/** but not image-publish.yml (pathspec behavior)."""
+    _set_env(
+        ignore_paths=[
+            ".github/workflows/**",
+            "!.github/workflows/image-publish.yml",
+        ],
+        force_patch=False,
+    )
+    # image-publish.yml should be NOT ignored; cicd.yml should be ignored.
+    assert not mod.are_all_files_ignored([".github/workflows/image-publish.yml"])
+    assert mod.are_all_files_ignored([".github/workflows/cicd.yml"])
+
+
+def test_010_child_negation_without_parent_reinclude_allowed_by_pathspec():
+    """Under pathspec, a child negation can work without parent re-include (no trailing '/')."""
+    _set_env(
+        ignore_paths=[
+            "build/**",  # ignore all under build
+            "!build/keep.txt",  # unignore specific file
+        ],
+        force_patch=False,
+    )
+    assert not mod.are_all_files_ignored(["build/keep.txt"])  # allowed by pathspec
+
+    # With an explicit (non-trailing-slash) allow list for a different file
+    _set_env(
+        ignore_paths=[
+            "build/**",
+            "!build/other.txt",
+        ],
+        force_patch=False,
+    )
+    assert mod.are_all_files_ignored(["build/keep.txt"])  # not unignored here
+
+
+def test_020_basename_patterns_apply_anywhere():
+    """A pattern with no '/' matches basenames anywhere; negation likewise."""
+    _set_env(
+        ignore_paths=[
+            "*.md",  # ignore all markdown
+            "!README.md",  # unignore any README.md anywhere
+        ],
+        force_patch=False,
+    )
+    assert not mod.are_all_files_ignored(["README.md"])  # at repo root
+    assert not mod.are_all_files_ignored(["docs/README.md"])  # nested
+    assert mod.are_all_files_ignored(["docs/guide.md"])  # other md still ignored
+    assert mod.are_all_files_ignored(["notes.md"])  # other md still ignored
+
+
+def test_030_single_star_does_not_cross_slash():
+    """docs/*.md should not match files in subdirectories (no slash crossing)."""
+    _set_env(
+        ignore_paths=[
+            "docs/*.md",
+        ],
+        force_patch=False,
+    )
+    assert mod.are_all_files_ignored(["docs/a.md"])  # matches
+    assert not mod.are_all_files_ignored(["docs/sub/a.md"])  # does not cross '/'
+    assert not mod.are_all_files_ignored(["src/a.md"])  # different dir
+
+
+def test_040_double_star_crosses_slashes_recursively():
+    """docs/**/*.md should match recursively under docs/."""
+    _set_env(
+        ignore_paths=[
+            "docs/**/*.md",
+        ],
+        force_patch=False,
+    )
+    assert mod.are_all_files_ignored(["docs/a.md"])  # matches
+    assert mod.are_all_files_ignored(["docs/sub/a.md"])  # matches
+    assert mod.are_all_files_ignored(["docs/sub/deep/a.md"])  # matches
+    assert not mod.are_all_files_ignored(["docs/a.txt"])  # different ext
+
+
+def test_050_directory_tree_pattern_any_depth():
+    """A directory tree pattern matches at any depth when not anchored with '/'."""
+    _set_env(
+        ignore_paths=[
+            "**/vendor/**",  # any 'vendor' subtree at any depth
+        ],
+        force_patch=False,
+    )
+    assert mod.are_all_files_ignored(["vendor/lib/a.py"])  # top-level vendor
+    assert mod.are_all_files_ignored(["src/vendor/lib.py"])  # nested vendor
+
+
+def test_060_order_last_rule_wins():
+    """Later rules override earlier matches (last rule wins)."""
+    _set_env(
+        ignore_paths=[
+            "*.log",
+            "!debug.log",
+            "debug.log",
+            "!debug.log",  # final: unignore
+        ],
+        force_patch=False,
+    )
+    assert mod.are_all_files_ignored(["app.log"])  # ignored by *.log
+    assert not mod.are_all_files_ignored(["debug.log"])  # last rule wins (unignored)
+    assert not mod.are_all_files_ignored(["logs/debug.log"])  # basename match
+
+
+def test_070_dist_tree_and_specific_file():
+    """Use 'dist/**' and negate a specific file (no trailing-slash directory patterns)."""
+    _set_env(
+        ignore_paths=[
+            "dist/**",
+            "!dist/keep.whl",
+        ],
+        force_patch=False,
+    )
+    assert not mod.are_all_files_ignored(["dist/keep.whl"])  # unignored
+    assert mod.are_all_files_ignored(["dist/drop.whl"])  # still ignored
+
+
+def test_080_empty_changed_list_treated_as_all_ignored():
+    """No changed files are treated as all ignored (empty commits result in no bump)."""
+    _set_env(ignore_paths=["*"], force_patch=False)
+    assert mod.are_all_files_ignored([]) is True
+
+
+def test_090_mixed_subtree_unignore_then_reignore_last_rule_wins():
+    """Subtree unignore followed by a re-ignore results in the path being ignored again."""
+    _set_env(
+        ignore_paths=[
+            "data/**",  # ignore all data
+            "!data/images/**",  # unignore images subtree
+            "!data/images/private/**",  # unignore private subtree
+            "data/images/private/**",  # re-ignore private subtree (last wins)
+        ],
+        force_patch=False,
+    )
+    assert mod.are_all_files_ignored(["data/a.bin"])  # ignored
+    assert not mod.are_all_files_ignored(["data/images/a.png"])  # unignored
+    assert mod.are_all_files_ignored(["data/images/private/secret.png"])  # re-ignored
 
 
 # -----------------------------------------------------------------------------
@@ -275,8 +421,11 @@ def test_360_work_no_tokens_some_ignored_some_not_force_patch_false(
         "run",
         _mock_git_repo(
             [
-                ("chore: x", ["docs/README.md"]),  # non bump
-                ("refactor: y", ["src/kite_eating_tree.py"]),  # no b/c force_patch=Fals
+                ("chore: x", ["docs/README.md"]),  # non bump (ignored)
+                (
+                    "refactor: y",
+                    ["src/kite_eating_tree.py"],
+                ),  # non-ignored, but no token
             ]
         ),
     )
@@ -291,14 +440,14 @@ def test_360_work_no_tokens_some_ignored_some_not_force_patch_false(
 
 
 def test_370_work_explicit_bump(monkeypatch, capsys):
-    """Test."""
+    """Explicit [major] token wins even if files are under ignored patterns."""
     _set_env(ignore_paths=["docs/**"], force_patch=True)
     monkeypatch.setattr(
         subprocess,
         "run",
         _mock_git_repo(
             [
-                ("chore: x [major]", ["docs/README.md"]),  # bump b/c explicit
+                ("chore: x [major]", ["docs/README.md"]),  # bump b/c explicit token
                 ("refactor: y [no-bump]", ["src/kite_eating_tree.py"]),
             ]
         ),
@@ -313,16 +462,16 @@ def test_370_work_explicit_bump(monkeypatch, capsys):
     assert out == "5.0.0"
 
 
-def test_380_work_(monkeypatch, capsys):
-    """Test."""
+def test_380_work_all_ignored_then_no_bump(monkeypatch, capsys):
+    """All changes ignored and no tokens -> no bump output."""
     _set_env(ignore_paths=["docs/**"], force_patch=True)
     monkeypatch.setattr(
         subprocess,
         "run",
         _mock_git_repo(
             [
-                ("chore: x", ["docs/snoopy.md"]),  # non bump
-                ("refactor: y [no-bump]", ["snoopy.py"]),  # non bump
+                ("chore: x", ["docs/snoopy.md"]),  # ignored
+                ("refactor: y [no-bump]", ["snoopy.py"]),  # explicit no-bump
             ]
         ),
     )
@@ -336,15 +485,15 @@ def test_380_work_(monkeypatch, capsys):
     assert out == ""
 
 
-def test_390_work_(monkeypatch, capsys):
-    """Test."""
+def test_390_work_explicit_minor_no_files(monkeypatch, capsys):
+    """Explicit [minor] bump even if commit changed no files (edge case)."""
     _set_env(ignore_paths=["docs/**"], force_patch=True)
     monkeypatch.setattr(
         subprocess,
         "run",
         _mock_git_repo(
             [
-                ("chore: x [minor]", []),  # bump
+                ("chore: x [minor]", []),  # explicit minor bump
             ]
         ),
     )
@@ -356,6 +505,38 @@ def test_390_work_(monkeypatch, capsys):
     )
     out = capsys.readouterr().out.strip()
     assert out == "4.6.0"
+
+
+def test_398_work_workflows_ignore_except_one_affects_bump(monkeypatch, capsys):
+    """Touching the allowed workflow file triggers a bump when force_patch=True."""
+    _set_env(
+        ignore_paths=[
+            ".github/workflows/**",
+            "!.github/workflows/image-publish.yml",
+        ],
+        force_patch=True,  # allow bump when a non-ignored file changes without tokens
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _mock_git_repo(
+            [
+                (
+                    "ci: tweak image publish",
+                    [".github/workflows/image-publish.yml"],  # NOT ignored
+                ),
+                ("ci: tweak other", [".github/workflows/cicd.yml"]),  # ignored
+            ]
+        ),
+    )
+
+    mod.work(
+        version_tag="1.2.3",
+        first_commit="abc123",
+        version_style=mod.VERSION_STYLE_X_Y_Z,
+    )
+    out = capsys.readouterr().out.strip()
+    assert out == "1.2.4"
 
 
 # -----------------------------------------------------------------------------
