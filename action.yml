@@ -8,7 +8,7 @@ inputs:
     required: false
     default: "false"
   ignore-paths:
-    description: Newline-delimited list of file/directory globs to ignore when checking changed files
+    description: Newline-delimited gitignore-style patterns (e.g. `resources/**`) — if all changed files match these and there's no bump token, no release is made
     required: false
     default: ""
   version-style:
