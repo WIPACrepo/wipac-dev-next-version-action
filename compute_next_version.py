@@ -36,9 +36,9 @@ class EnvConfig:
             [ln.strip() for ln in self.IGNORE_PATHS if ln.strip()],
         )
         for pat in self.IGNORE_PATHS:
-            for no in ["/", "./", "../"]:
-                if pat.startswith(no):
-                    raise ValueError(f"ignore-path cannot start with '{no}' ({pat})")
+            for rel in ["./", "../"]:  # check relative paths
+                if pat.startswith(rel) or pat.startswith("!" + rel):
+                    raise ValueError(f"ignore-path cannot be relative '{rel}' ({pat})")
             if pat.endswith("/"):
                 raise ValueError(
                     f"ignore-path cannot end with '/' ({pat}) — "

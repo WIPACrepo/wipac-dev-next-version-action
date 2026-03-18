@@ -1,5 +1,6 @@
 """Test compute_next_version.py"""
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -227,6 +228,104 @@ def test_090_mixed_subtree_unignore_then_reignore_last_rule_wins():
     assert mod.are_all_files_ignored(["data/a.bin"])  # ignored
     assert not mod.are_all_files_ignored(["data/images/a.png"])  # unignored
     assert mod.are_all_files_ignored(["data/images/private/secret.png"])  # re-ignored
+
+
+# -----------------------------------------------------------------------------
+# EnvConfig validation / leading-slash handling
+# -----------------------------------------------------------------------------
+
+
+def test_100_envconfig_allows_leading_slash_workflow_patterns():
+    """Leading '/' patterns are accepted and behave as expected."""
+    _set_env(
+        ignore_paths=[
+            ".github/*",
+            "!/.github/workflows/*",
+            "/.github/workflows/cicd.yml",
+        ],
+        force_patch=False,
+    )
+    assert mod.are_all_files_ignored([".github/workflows/cicd.yml"])
+    assert not mod.are_all_files_ignored([".github/workflows/image-publish.yml"])
+    assert not mod.are_all_files_ignored([".github/workflows/subdir/nested.yml"])
+    assert mod.are_all_files_ignored([".github/foo.txt"])
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "./foo.txt",
+        "../foo.txt",
+        "!./foo.txt",
+        "!../foo.txt",
+    ],
+)
+def test_110_envconfig_rejects_relative_patterns(pattern: str):
+    """Relative ignore patterns are rejected, including negated ones."""
+    with pytest.raises(
+        ValueError,
+        match=re.escape("ignore-path cannot be relative"),
+    ):
+        mod.EnvConfig(
+            IGNORE_PATHS=[pattern],
+            FORCE_PATCH_IF_NO_COMMIT_TOKEN=False,
+        )
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "foo/",
+        "!foo/",
+        ".github/",
+        "!/.github/workflows/",
+    ],
+)
+def test_120_envconfig_rejects_trailing_slash_patterns(pattern: str):
+    """Trailing-slash directory patterns are rejected."""
+    with pytest.raises(
+        ValueError,
+        match=re.escape("ignore-path cannot end with '/'"),
+    ):
+        mod.EnvConfig(
+            IGNORE_PATHS=[pattern],
+            FORCE_PATCH_IF_NO_COMMIT_TOKEN=False,
+        )
+
+
+def test_130_leading_slash_and_nonleading_slash_rules_match_the_same_here():
+    """Leading-slash and non-leading-slash forms match the same repo-relative paths here."""
+    env_a = mod.EnvConfig(
+        IGNORE_PATHS=[
+            ".github/*",
+            "!.github/workflows/*",
+            ".github/workflows/cicd.yml",
+        ],
+        FORCE_PATCH_IF_NO_COMMIT_TOKEN=False,
+    )
+    env_b = mod.EnvConfig(
+        IGNORE_PATHS=[
+            ".github/*",
+            "!/.github/workflows/*",
+            "/.github/workflows/cicd.yml",
+        ],
+        FORCE_PATCH_IF_NO_COMMIT_TOKEN=False,
+    )
+
+    paths = [
+        ".github/workflows/cicd.yml",
+        ".github/workflows/image-publish.yml",
+        ".github/workflows/tag-and-release.yml",
+        ".github/workflows/other.yml",
+        ".github/workflows/subdir/nested.yml",
+        ".github/foo.txt",
+        "README.md",
+    ]
+
+    for path in paths:
+        assert bool(env_a.GITIGNOREISH_SPEC.match_file(path)) == bool(
+            env_b.GITIGNOREISH_SPEC.match_file(path)
+        ), path
 
 
 # -----------------------------------------------------------------------------
