@@ -39,7 +39,7 @@ jobs:
   #############################################################################
 
   tests:
-    needs: [ py-versions, lint ]
+    needs: [ py-versions ]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
